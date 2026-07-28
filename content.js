@@ -86,7 +86,7 @@
     let record = records.get(element);
     if (record) return record;
 
-    record = {id: `p-${nextId++}`, element, node: null, status: "idle", text: ""};
+    record = {id: `p-${nextId++}`, element, node: null, status: "idle", text: "", generation: -1};
     records.set(element, record);
     recordsById.set(record.id, record);
     return record;
@@ -188,6 +188,10 @@
       roots = [...document.querySelectorAll(selector)].filter((root) =>
         !root.closest(EXCLUDED_SELECTOR) && !root.parentElement?.closest(selector)
       );
+      if (roots.length > 1) {
+        // ponytail: Largest semantic root is the MVP article heuristic; add site rules when a real page disproves it.
+        roots = [roots.reduce((largest, root) => root.textContent.length > largest.textContent.length ? root : largest)];
+      }
       if (roots.length) break;
     }
     if (!roots.length && document.body) roots.push(document.body);
@@ -211,7 +215,7 @@
     const record = getRecord(element);
     const text = paragraphText(element);
     if (!isTranslatable(text)) return;
-    if (record.text === text && ["detecting", "skipped"].includes(record.status)) return;
+    if (record.text === text && record.generation === generation && ["detecting", "skipped", "error"].includes(record.status)) return;
     if (
       record.text === text &&
       record.node?.isConnected &&
@@ -221,6 +225,7 @@
     }
 
     record.text = text;
+    record.generation = generation;
     if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text)) {
       record.node?.remove();
       record.node = null;
@@ -232,7 +237,7 @@
     record.status = "detecting";
     activeDetections += 1;
     chrome.i18n.detectLanguage(text, (result) => {
-      activeDetections -= 1;
+      if (detectionGeneration === generation) activeDetections -= 1;
       if (!enabled || detectionGeneration !== generation || record.status !== "detecting" || record.text !== text) {
         refreshFloatingStatus();
         return;
@@ -296,7 +301,7 @@
       if (job.generation !== generation || job.record.status !== "queued") continue;
       activeRequests += 1;
       translate(job).finally(() => {
-        activeRequests -= 1;
+        if (job.generation === generation) activeRequests -= 1;
         pumpQueue();
         refreshFloatingStatus();
       });
@@ -315,6 +320,8 @@
   async function cancelTranslation() {
     enabled = false;
     generation += 1;
+    activeDetections = 0;
+    activeRequests = 0;
     queue.length = 0;
     viewportObserver.disconnect();
     for (const record of recordsById.values()) {
@@ -336,6 +343,7 @@
     record.node = null;
     record.status = "idle";
     record.text = "";
+    record.generation = -1;
     viewportObserver.unobserve?.(element);
     viewportObserver.observe(element);
   }
@@ -347,6 +355,7 @@
     for (const record of recordsById.values()) {
       record.node = null;
       record.status = "idle";
+      record.generation = -1;
     }
   }
 

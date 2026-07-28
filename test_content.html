@@ -65,11 +65,12 @@
         <p id="chinese" data-visible="true">这是一段中文正文，不应该发送给翻译服务。</p>
         <p id="french" data-visible="true">Bonjour le monde, ceci est un paragraphe français.</p>
         <div id="controls"><button type="button">Do not translate controls</button></div>
+        <aside><p id="sidebar" data-visible="true">Related English sidebar content</p></aside>
         <div id="below">Slow below viewport</div>
       </article>
-      <aside><p id="sidebar" data-visible="true">Related English sidebar content</p></aside>
       <p id="main-edge" data-visible="true">English content outside the article body</p>
     </main>
+    <article><p id="related-article" data-visible="true">Unrelated English article card</p></article>
     <script src="content.js"></script>
     <script>
       setTimeout(() => {
@@ -150,10 +151,11 @@
             !document.querySelector("#french + .bwt-translation") &&
             !document.querySelector("#sidebar + .bwt-translation") &&
             !document.querySelector("#main-edge + .bwt-translation") &&
-            !sentTexts.some((text) => text.includes("中文") || text.startsWith("Bonjour") || text.includes("sidebar") || text.includes("outside the article")) &&
-            window.__detectedTexts.some((text) => text.includes("中文")) &&
+            !document.querySelector("#related-article + .bwt-translation") &&
+            !sentTexts.some((text) => text.includes("中文") || text.startsWith("Bonjour") || text.includes("sidebar") || text.includes("outside the article") || text.includes("article card")) &&
+            !window.__detectedTexts.some((text) => text.includes("中文")) &&
             window.__detectedTexts.some((text) => text.startsWith("Bonjour")) &&
-            !window.__detectedTexts.some((text) => text.includes("sidebar") || text.includes("outside the article"));
+            !window.__detectedTexts.some((text) => text.includes("sidebar") || text.includes("outside the article") || text.includes("article card"));
           const passed =
             initialFloatingButton &&
             waitingForViewport &&

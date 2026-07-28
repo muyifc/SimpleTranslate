@@ -19,6 +19,19 @@
     "nav",
     "header",
     "footer",
+    "aside",
+    '[role="complementary"]',
+    '[role="navigation"]',
+    '[role="banner"]',
+    '[role="contentinfo"]',
+    '[role="toolbar"]',
+    '[role="menu"]',
+    '[role="dialog"]',
+    '[aria-hidden="true"]',
+    '[class*="sidebar" i]',
+    '[id*="sidebar" i]',
+    '[class*="advertisement" i]',
+    '[id*="advertisement" i]',
     ".bwt-translation",
     "[data-bwt-control]",
   ].join(",");
@@ -32,6 +45,7 @@
   let enabled = false;
   let generation = 0;
   let activeRequests = 0;
+  let activeDetections = 0;
   let hasErrors = false;
   let debounceTimer;
   let floatingButton;
@@ -116,7 +130,7 @@
 
   function refreshFloatingStatus() {
     if (!enabled) return;
-    setFloatingStatus(activeRequests || queue.length ? "translating" : hasErrors ? "error" : "ready");
+    setFloatingStatus(activeDetections || activeRequests || queue.length ? "translating" : hasErrors ? "error" : "ready");
   }
 
   function createFloatingButton() {
@@ -169,7 +183,13 @@
   }
 
   function discoverCandidates() {
-    const roots = [...document.querySelectorAll('article,main,[role="main"]')];
+    let roots = [];
+    for (const selector of ['main article,[role="main"] article', 'main,[role="main"]', "article"]) {
+      roots = [...document.querySelectorAll(selector)].filter((root) =>
+        !root.closest(EXCLUDED_SELECTOR) && !root.parentElement?.closest(selector)
+      );
+      if (roots.length) break;
+    }
     if (!roots.length && document.body) roots.push(document.body);
 
     const seen = new Set();
@@ -191,6 +211,7 @@
     const record = getRecord(element);
     const text = paragraphText(element);
     if (!isTranslatable(text)) return;
+    if (record.text === text && ["detecting", "skipped"].includes(record.status)) return;
     if (
       record.text === text &&
       record.node?.isConnected &&
@@ -199,13 +220,39 @@
       return;
     }
 
-    record.node?.remove();
-    record.node = null;
     record.text = text;
-    setTranslation(record, "即将翻译…", "queued");
-    queue.push({record, text, generation});
-    setFloatingStatus("translating");
-    pumpQueue();
+    if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text)) {
+      record.node?.remove();
+      record.node = null;
+      record.status = "skipped";
+      return;
+    }
+
+    const detectionGeneration = generation;
+    record.status = "detecting";
+    activeDetections += 1;
+    chrome.i18n.detectLanguage(text, (result) => {
+      activeDetections -= 1;
+      if (!enabled || detectionGeneration !== generation || record.status !== "detecting" || record.text !== text) {
+        refreshFloatingStatus();
+        return;
+      }
+      const primary = result?.languages?.[0];
+      if (!primary?.language?.startsWith("en") || (!result.isReliable && (primary.percentage || 0) < 80)) {
+        record.node?.remove();
+        record.node = null;
+        record.status = "skipped";
+        refreshFloatingStatus();
+        return;
+      }
+
+      record.node?.remove();
+      record.node = null;
+      setTranslation(record, "即将翻译…", "queued");
+      queue.push({record, text, generation});
+      setFloatingStatus("translating");
+      pumpQueue();
+    });
   }
 
   function sendMessage(message) {
@@ -225,6 +272,7 @@
     try {
       const response = await sendMessage({
         type: "BWT_TRANSLATE_BATCH",
+        sourceLanguage: "en",
         paragraphs: [{id: record.id, text}],
       });
       if (jobGeneration !== generation || record.status !== "pending" || record.text !== text) return;
@@ -270,7 +318,9 @@
     queue.length = 0;
     viewportObserver.disconnect();
     for (const record of recordsById.values()) {
-      if (["queued", "pending"].includes(record.status)) {
+      if (record.status === "detecting") {
+        record.status = "idle";
+      } else if (["queued", "pending"].includes(record.status)) {
         setTranslation(record, "已取消翻译", "cancelled");
       }
     }

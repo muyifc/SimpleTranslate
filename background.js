@@ -29,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-async function translateBatch(paragraphs, sourceLanguage = "auto", targetLanguage = "zh-CN", signal) {
+async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage = "zh-CN", signal) {
   if (!Array.isArray(paragraphs) || !paragraphs.length) return [];
 
   const {apiUrl, model, apiKey} = await chrome.storage.local.get(["apiUrl", "model", "apiKey"]);

@@ -14,7 +14,7 @@
 
 - 支持最新版 Chrome 和 Edge。
 - 保留原文，提供双语对照显示。
-- 自动识别页面语言，目标语言固定为简体中文。
+- 首版源语言固定为英语，目标语言固定为简体中文。
 - 调用一个 OpenAI-compatible 翻译接口。
 - 逐段独立翻译并即时显示状态，同时限制并发请求。
 - 只翻译进入当前可视区域的内容，滚动时按需继续。
@@ -34,6 +34,7 @@
 - 多翻译引擎切换和翻译服务插件体系。
 - 云端配置同步和跨设备同步。
 - 面向所有网站的复杂规则编辑器。
+- 英语以外的其他源语言。
 
 需要上述能力时再分别立项，不提前搭建抽象层。
 
@@ -81,7 +82,7 @@
 
 ```json
 {
-  "sourceLanguage": "auto",
+  "sourceLanguage": "en",
   "targetLanguage": "zh-CN",
   "paragraphs": [
     { "id": "p-1", "text": "First paragraph" },
@@ -134,11 +135,11 @@ bilingual-web-translator/
 
 ### 默认候选区域
 
-优先扫描：
+按顺序选择第一个存在的正文区域：
 
-- `article`
-- `main`
-- `[role="main"]`
+- `main` 或 `[role="main"]` 内的 `article`
+- `main`、`[role="main"]`
+- 独立 `article`
 - 页面不存在上述区域时回退到 `body`
 
 默认候选元素：
@@ -157,12 +158,15 @@ bilingual-web-translator/
 - `[contenteditable="true"]`
 - `[translate="no"]`、`.notranslate`
 - `nav`、`header`、`footer`
+- `aside`、补充内容、工具栏、菜单、弹窗和常见侧栏/广告容器
 - 扩展自己插入的 `.bwt-translation`
 - 扩展自己的 `[data-bwt-control]` 悬浮控件
 
 ### 文本处理
 
 - 忽略纯空白、纯数字和过短文本。
+- 使用浏览器原生 `chrome.i18n.detectLanguage()`，只处理识别为英语的文本。
+- 含中日韩文字的段落直接跳过，不发送给翻译接口。
 - 合并同一段落内被 `span`、`a`、`strong`、`em` 等内联元素切开的文本。
 - 为每个待翻译段落生成稳定 ID。
 - 不修改原始文本节点。
@@ -218,7 +222,7 @@ bilingual-web-translator/
 ## 隐私和安全
 
 - 内容脚本会自动创建悬浮球，但只在用户点击后读取当前页面正文。
-- 只发送被识别为正文的文本，不发送 Cookie、Local Storage 或完整 HTML。
+- 只发送被识别为正文英语的文本，不发送其他语言、Cookie、Local Storage 或完整 HTML。
 - 密码框、输入框、可编辑区域默认不读取、不翻译。
 - API Key 不写入源码或仓库。
 - 日志不打印 Key、请求头或完整网页文本。
@@ -252,6 +256,7 @@ bilingual-web-translator/
 - 持久缓存。
 - 悬停翻译和划词翻译。
 - 按站点启用、禁用和自动翻译规则。
+- 增加英语以外的可选源语言。
 
 除非真实用户明确需要，不进入 PDF、OCR、视频字幕和账户系统。
 
@@ -262,6 +267,7 @@ bilingual-web-translator/
 - 滚动到新内容时继续翻译，悬浮球能提示翻译、完成、失败和取消状态。
 - 原网页文本、链接和基本布局不被破坏。
 - 代码块、输入框、导航栏默认不翻译。
+- 中文、其他非英语文本和侧栏等边角内容不会发送给翻译服务。
 - API 失败不会清空或覆盖原文。
 - 动态新增的普通段落能被翻译且不会重复插入。
 - API Key 不出现在源码、日志和版本库中。

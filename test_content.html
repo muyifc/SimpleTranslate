@@ -7,12 +7,32 @@
       window.__messages = [];
       window.__activeRequests = 0;
       window.__maxActiveRequests = 0;
+      window.IntersectionObserver = class {
+        constructor(callback) {
+          this.callback = callback;
+          this.targets = new Set();
+          window.__viewportObserver = this;
+        }
+        observe(target) {
+          this.targets.add(target);
+          if (target.dataset.visible === "true") {
+            setTimeout(() => this.callback([{target, isIntersecting: true}]));
+          }
+        }
+        disconnect() { this.targets.clear(); }
+        trigger(target) { this.callback([{target, isIntersecting: true}]); }
+      };
       window.chrome ||= {};
       window.chrome.runtime = {
         lastError: null,
         onMessage: {addListener(listener) { window.__contentListener = listener; }},
         sendMessage(message, callback) {
           window.__messages.push(message);
+          if (message.type === "BWT_CANCEL_REQUESTS") {
+            callback({ok: true, cancelled: window.__activeRequests});
+            return;
+          }
+
           window.__activeRequests += 1;
           window.__maxActiveRequests = Math.max(window.__maxActiveRequests, window.__activeRequests);
           const paragraph = message.paragraphs[0];
@@ -21,7 +41,7 @@
             callback(paragraph.text.includes("Failure")
               ? {ok: false, error: "mock failure"}
               : {ok: true, translations: [{id: paragraph.id, text: `译文：${paragraph.text}`}]});
-          }, 30);
+          }, paragraph.text.includes("Slow") ? 400 : 80);
         }
       };
     </script>
@@ -29,37 +49,56 @@
   </head>
   <body>
     <main>
-      <p id="paragraph">Hello <strong>world</strong></p>
-      <div id="standalone">Standalone div text</div>
-      <div><p id="nested">Nested paragraph</p></div>
-      <div id="failure">Failure paragraph</div>
+      <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
+      <div id="standalone" data-visible="true">Standalone div text</div>
+      <div><p id="nested" data-visible="true">Nested paragraph</p></div>
+      <div id="failure" data-visible="true">Failure paragraph</div>
       <div id="controls"><button type="button">Do not translate controls</button></div>
+      <div id="below">Slow below viewport</div>
     </main>
     <script>
       setTimeout(() => {
-        let response;
-        const finished = new Promise((resolve) => {
-          window.__contentListener({type: "BWT_TRANSLATE_PAGE"}, {}, (value) => {
-            response = value;
-            resolve();
-          });
-        });
-        const placeholdersInsertedImmediately = document.querySelectorAll(".bwt-translation--pending").length === 4;
+        let startResponse;
+        let cancelResponse;
+        let initialVisibleOnly = false;
+        window.__contentListener({type: "BWT_TRANSLATE_PAGE"}, {}, (value) => { startResponse = value; });
 
-        finished.then(() => {
+        setTimeout(() => {
+          const initialBatches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
+          initialVisibleOnly =
+            document.querySelectorAll(".bwt-translation--pending").length === 4 &&
+            !document.querySelector("#below + .bwt-translation") &&
+            initialBatches.length === 4;
+        }, 30);
+
+        setTimeout(() => {
+          window.__viewportObserver?.trigger(document.querySelector("#below"));
+          setTimeout(() => {
+            window.__contentListener({type: "BWT_CANCEL_TRANSLATION"}, {}, (value) => { cancelResponse = value; });
+          }, 20);
+        }, 180);
+
+        setTimeout(() => {
           const translations = [...document.querySelectorAll(".bwt-translation")];
+          const batches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
+          const cancellations = window.__messages.filter((message) => message.type === "BWT_CANCEL_REQUESTS");
+          const belowTranslation = document.querySelector("#below + .bwt-translation");
           const passed =
-            placeholdersInsertedImmediately &&
-            response?.ok === false &&
-            window.__messages.length === 4 &&
-            window.__messages.every((message) => message.paragraphs.length === 1) &&
+            initialVisibleOnly &&
+            startResponse?.ok === true &&
+            cancelResponse?.ok === true &&
+            batches.length === 5 &&
+            batches.every((message) => message.paragraphs.length === 1) &&
+            cancellations.length === 1 &&
             window.__maxActiveRequests <= 3 &&
             translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 3 &&
             translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1 &&
+            belowTranslation?.classList.contains("bwt-translation--cancelled") &&
+            belowTranslation.textContent === "已取消翻译" &&
             document.querySelector("#paragraph").textContent === "Hello world";
           document.body.dataset.test = passed ? "passed" : "failed";
           document.title = `content test ${document.body.dataset.test}`;
-        });
+        }, 750);
       });
     </script>
   </body>

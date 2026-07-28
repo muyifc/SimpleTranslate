@@ -1,0 +1,79 @@
+:root {
+  color-scheme: light dark;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+main {
+  padding: 16px;
+}
+
+h1 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+
+label {
+  display: block;
+  margin-top: 10px;
+}
+
+input {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 8px;
+  border: 1px solid #8888;
+  border-radius: 6px;
+}
+
+.notice,
+#status {
+  margin: 10px 0 0;
+  color: #666;
+  font-size: 12px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+button {
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+button:first-child {
+  grid-column: 1 / -1;
+}
+
+button.secondary {
+  background: #64748b;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+#status.error {
+  color: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+  .notice,
+  #status {
+    color: #aaa;
+  }
+}

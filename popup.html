@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>双语网页翻译</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <h1>双语网页翻译</h1>
+      <label>
+        API 地址
+        <input id="apiUrl" type="url" placeholder="https://api.openai.com/v1/chat/completions">
+      </label>
+      <label>
+        模型
+        <input id="model" type="text" placeholder="填写兼容接口的模型名">
+      </label>
+      <label>
+        API Key
+        <input id="apiKey" type="password" autocomplete="off" placeholder="保存在本机扩展存储中">
+      </label>
+      <p class="notice">被识别为正文的文本会发送到你配置的翻译服务。</p>
+      <div class="actions">
+        <button id="translate" type="button">翻译当前页</button>
+        <button id="hide" type="button" class="secondary">恢复原文</button>
+        <button id="show" type="button" class="secondary">显示译文</button>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

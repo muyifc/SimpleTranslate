@@ -8,6 +8,7 @@
       window.__messages = [];
       window.__activeRequests = 0;
       window.__maxActiveRequests = 0;
+      window.__detectedTexts = [];
       window.IntersectionObserver = class {
         constructor(callback) {
           this.callback = callback;
@@ -24,6 +25,13 @@
         trigger(target) { this.callback([{target, isIntersecting: true}]); }
       };
       window.chrome ||= {};
+      window.chrome.i18n = {
+        detectLanguage(text, callback) {
+          window.__detectedTexts.push(text);
+          const language = /[\u3400-\u9fff]/u.test(text) ? "zh" : text.startsWith("Bonjour") ? "fr" : "en";
+          setTimeout(() => callback({isReliable: true, languages: [{language, percentage: 100}]}), 10);
+        }
+      };
       window.chrome.runtime = {
         lastError: null,
         onMessage: {addListener(listener) { window.__contentListener = listener; }},
@@ -49,12 +57,18 @@
   </head>
   <body>
     <main>
-      <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
-      <div id="standalone" data-visible="true">Standalone div text</div>
-      <div><p id="nested" data-visible="true">Nested paragraph</p></div>
-      <div id="failure" data-visible="true">Failure paragraph</div>
-      <div id="controls"><button type="button">Do not translate controls</button></div>
-      <div id="below">Slow below viewport</div>
+      <article>
+        <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
+        <div id="standalone" data-visible="true">Standalone div text</div>
+        <div><p id="nested" data-visible="true">Nested paragraph</p></div>
+        <div id="failure" data-visible="true">Failure paragraph</div>
+        <p id="chinese" data-visible="true">这是一段中文正文，不应该发送给翻译服务。</p>
+        <p id="french" data-visible="true">Bonjour le monde, ceci est un paragraphe français.</p>
+        <div id="controls"><button type="button">Do not translate controls</button></div>
+        <div id="below">Slow below viewport</div>
+      </article>
+      <aside><p id="sidebar" data-visible="true">Related English sidebar content</p></aside>
+      <p id="main-edge" data-visible="true">English content outside the article body</p>
     </main>
     <script src="content.js"></script>
     <script>
@@ -66,6 +80,7 @@
         let contextMenuState = false;
         let restoreOriginalState = false;
         let showTranslationsState = false;
+        let onlyEnglishMainContent = false;
         const floatingButton = document.querySelector(".bwt-floating-button");
         const floatingMenu = document.querySelector(".bwt-floating-menu");
         const floatingStyle = floatingButton && getComputedStyle(floatingButton);
@@ -129,6 +144,16 @@
           const batches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           const cancellations = window.__messages.filter((message) => message.type === "BWT_CANCEL_REQUESTS");
           const belowTranslation = document.querySelector("#below + .bwt-translation");
+          const sentTexts = batches.map((message) => message.paragraphs[0].text);
+          onlyEnglishMainContent =
+            !document.querySelector("#chinese + .bwt-translation") &&
+            !document.querySelector("#french + .bwt-translation") &&
+            !document.querySelector("#sidebar + .bwt-translation") &&
+            !document.querySelector("#main-edge + .bwt-translation") &&
+            !sentTexts.some((text) => text.includes("中文") || text.startsWith("Bonjour") || text.includes("sidebar") || text.includes("outside the article")) &&
+            window.__detectedTexts.some((text) => text.includes("中文")) &&
+            window.__detectedTexts.some((text) => text.startsWith("Bonjour")) &&
+            !window.__detectedTexts.some((text) => text.includes("sidebar") || text.includes("outside the article"));
           const passed =
             initialFloatingButton &&
             waitingForViewport &&
@@ -138,8 +163,9 @@
             contextMenuState &&
             restoreOriginalState &&
             showTranslationsState &&
+            onlyEnglishMainContent &&
             batches.length === 5 &&
-            batches.every((message) => message.paragraphs.length === 1) &&
+            batches.every((message) => message.paragraphs.length === 1 && message.sourceLanguage === "en") &&
             cancellations.length === 1 &&
             window.__maxActiveRequests <= 3 &&
             translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 3 &&

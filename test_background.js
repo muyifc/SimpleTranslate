@@ -34,7 +34,9 @@ const context = {
     assert.equal(options.headers.Authorization, "Bearer secret");
     lastSignal = options.signal;
     const request = JSON.parse(options.body);
-    const paragraphs = JSON.parse(request.messages[1].content).paragraphs;
+    const input = JSON.parse(request.messages[1].content);
+    assert.equal(input.sourceLanguage, "en");
+    const paragraphs = input.paragraphs;
     if (fetchMode === "success") {
       return {
         ok: true,

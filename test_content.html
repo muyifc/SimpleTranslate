@@ -130,13 +130,13 @@
             floatingMenu?.matches(":popover-open") &&
             menuStyle.position === "fixed" &&
             menuStyle.right === "82px" &&
-            menuItems.map((item) => item.textContent).join("|") === "取消翻译|恢复原文|显示译文";
-          menuItems[1]?.click();
+            ["取消翻译", "重试失败", "选择翻译区域", "清除区域规则", "禁用此网站", "恢复原文", "显示译文"].every((label) => menuItems.some((item) => item.textContent === label));
+          floatingMenu?.querySelector('[data-action="original"]')?.click();
           restoreOriginalState =
             document.documentElement.classList.contains("bwt-show-original") &&
             !floatingMenu?.matches(":popover-open");
           floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
-          menuItems[2]?.click();
+          floatingMenu?.querySelector('[data-action="translations"]')?.click();
           showTranslationsState =
             !document.documentElement.classList.contains("bwt-show-original") &&
             !floatingMenu?.matches(":popover-open");

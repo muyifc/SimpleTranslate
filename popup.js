@@ -1,4 +1,4 @@
-const fields = ["apiUrl", "model", "apiKey"];
+const fields = ["apiUrl", "model", "apiKey", "glossary"];
 const status = document.querySelector("#status");
 
 chrome.storage.local.get(fields).then((settings) => {
@@ -9,6 +9,21 @@ document.querySelector("#translate").addEventListener("click", () => run("BWT_TR
 document.querySelector("#cancel").addEventListener("click", () => run("BWT_CANCEL_TRANSLATION"));
 document.querySelector("#hide").addEventListener("click", () => run("BWT_HIDE_TRANSLATIONS"));
 document.querySelector("#show").addEventListener("click", () => run("BWT_SHOW_TRANSLATIONS"));
+document.querySelector("#clearCache").addEventListener("click", clearCache);
+
+async function clearCache() {
+  setBusy(true);
+  setStatus("正在清空本机缓存…");
+  try {
+    const response = await chrome.runtime.sendMessage({type: "BWT_CLEAR_CACHE"});
+    if (response?.ok === false) throw new Error(response.error || "清空缓存失败");
+    setStatus("翻译缓存已清空");
+  } catch (error) {
+    setStatus(error.message || String(error), true);
+  } finally {
+    setBusy(false);
+  }
+}
 
 async function run(type, saveSettings = false) {
   setBusy(true);
@@ -19,7 +34,8 @@ async function run(type, saveSettings = false) {
       const settings = Object.fromEntries(fields.map((field) => [field, document.querySelector(`#${field}`).value.trim()]));
       if (!settings.apiUrl || !settings.model) throw new Error("请填写 API 地址和模型");
       const endpoint = new URL(settings.apiUrl);
-      if (!/^https?:$/.test(endpoint.protocol)) throw new Error("API 地址只支持 HTTP 或 HTTPS");
+      const localHttp = endpoint.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname);
+      if (endpoint.protocol !== "https:" && !localHttp) throw new Error("API 地址必须使用 HTTPS（本机 localhost 可使用 HTTP）");
       const granted = await chrome.permissions.request({origins: [`${endpoint.protocol}//${endpoint.hostname}/*`]});
       if (!granted) throw new Error("需要授权访问该翻译 API");
       await chrome.storage.local.set(settings);

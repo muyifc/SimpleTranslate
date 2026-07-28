@@ -15,7 +15,7 @@
         disconnect() { this.targets.clear(); }
       };
       window.chrome = {
-        i18n: {detectLanguage(_text, callback) { setTimeout(() => callback({isReliable: true, languages: [{language: "en", percentage: 100}]})); }},
+        i18n: {detectLanguage(text, callback) { setTimeout(() => callback({isReliable: true, languages: [{language: "en", percentage: 100}]}), text.includes("Delayed") ? 50 : 0); }},
         storage: {local: {
           async get(keys) {
             if (typeof keys === "string") return {[keys]: window.__stored[keys]};
@@ -52,6 +52,7 @@
     </article>
     <section id="new-root"><p id="new-paragraph" data-visible="true">New selected paragraph</p></section>
     <p id="selection">Selected English words</p>
+    <p id="delayed-selection">Delayed selected words</p>
     <p id="hover">Hover English words</p>
     <script src="content.js"></script>
     <script>
@@ -74,6 +75,12 @@
           document.querySelector("#retry + .bwt-translation")?.classList.contains("bwt-translation--done");
 
         openMenu();
+        document.querySelector('[data-action="clear-region"]')?.click();
+        await wait(100);
+        const clearRuleWorked = !window.__stored.siteRules?.[""]?.selector &&
+          window.__messages.some((message) => message.paragraphs?.[0]?.text === "Ignored main text");
+
+        openMenu();
         document.querySelector('[data-action="select-region"]')?.click();
         await wait(20);
         document.querySelector("#new-root").dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
@@ -93,16 +100,29 @@
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
 
+        const delayedRange = document.createRange();
+        delayedRange.selectNodeContents(document.querySelector("#delayed-selection"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(delayedRange);
+        document.querySelector("#delayed-selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(10);
+        document.querySelector(".bwt-selection-action")?.click();
+        document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+        await wait(80);
+        const quickCancelWorked = !window.__messages.some((message) => message.paragraphs?.[0]?.text === "Delayed selected words");
+
+        history.pushState({}, "", "#new-page");
         document.querySelector("#hover").dispatchEvent(new MouseEvent("mouseover", {bubbles: true, altKey: true}));
         await wait(550);
-        const hoverWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Hover English words";
+        const hoverMessage = window.__messages.find((message) => message.paragraphs?.[0]?.text === "Hover English words");
+        const hoverWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Hover English words" && hoverMessage?.context?.previousText === "";
 
         openMenu();
         document.querySelector('[data-action="site-toggle"]')?.click();
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && regionWorked && selectionWorked && hoverWorked && disableWorked ? "passed" : "failed";
+        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && quickCancelWorked && hoverWorked && disableWorked ? "passed" : "failed";
         document.title = `feature test ${document.body.dataset.test}`;
       })().catch((error) => {
         document.body.dataset.test = "failed";

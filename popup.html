@@ -21,12 +21,17 @@
         API Key
         <input id="apiKey" type="password" autocomplete="off" placeholder="保存在本机扩展存储中">
       </label>
-      <p class="notice">进入可视区域的正文文本会发送到你配置的翻译服务。</p>
+      <label>
+        术语表
+        <textarea id="glossary" rows="3" placeholder="每行一个术语，例如：agent=智能体"></textarea>
+      </label>
+      <p class="notice">进入可视区域的正文和少量相邻上下文会发送到翻译服务；译文缓存保存在本机。</p>
       <div class="actions">
         <button id="translate" type="button">开始按需翻译</button>
         <button id="cancel" type="button" class="danger">取消翻译</button>
         <button id="hide" type="button" class="secondary">恢复原文</button>
         <button id="show" type="button" class="secondary">显示译文</button>
+        <button id="clearCache" type="button" class="secondary">清空缓存</button>
       </div>
       <p id="status" role="status" aria-live="polite"></p>
     </main>

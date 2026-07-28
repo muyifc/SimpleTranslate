@@ -83,6 +83,14 @@ html.bwt-show-original .bwt-translation {
 .bwt-floating-button[data-status="cancelled"] {
   background: #64748b !important;
 }
+.bwt-floating-button[data-status="selecting"] {
+  background: #9333ea !important;
+}
+
+.bwt-floating-button[data-status="disabled"] {
+  background: #64748b !important;
+  filter: grayscale(0.75) !important;
+}
 
 .bwt-floating-menu {
   all: initial;
@@ -125,4 +133,52 @@ html.bwt-show-original .bwt-translation {
   background: #eff6ff !important;
   color: #1d4ed8 !important;
   outline: none !important;
+}
+.bwt-floating-menu button:disabled {
+  cursor: default !important;
+  opacity: 0.45 !important;
+}
+
+.bwt-region-candidate {
+  outline: 3px solid #a855f7 !important;
+  outline-offset: 3px !important;
+  cursor: crosshair !important;
+}
+
+.bwt-selection-action,
+.bwt-quick-translation {
+  all: initial;
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  box-sizing: border-box !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  background: white !important;
+  color: #1f2937 !important;
+  box-shadow: 0 8px 24px #0003 !important;
+  font: 14px/1.5 system-ui, sans-serif !important;
+}
+
+.bwt-selection-action {
+  width: 34px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  border-color: #2563eb !important;
+  background: #2563eb !important;
+  color: white !important;
+  cursor: pointer !important;
+  text-align: center !important;
+}
+
+.bwt-quick-translation {
+  width: min(360px, calc(100vw - 16px)) !important;
+  max-height: min(240px, calc(100vh - 16px)) !important;
+  padding: 10px 12px !important;
+  overflow: auto !important;
+  white-space: pre-wrap !important;
+}
+
+.bwt-selection-action[hidden],
+.bwt-quick-translation[hidden] {
+  display: none !important;
 }

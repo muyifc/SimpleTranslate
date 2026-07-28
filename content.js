@@ -36,19 +36,45 @@
     "[data-bwt-control]",
   ].join(",");
   const MAX_PARAGRAPH_CHARACTERS = 6000;
+  const MAX_QUICK_CHARACTERS = 1200;
   // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
   const MAX_CONCURRENT_REQUESTS = 3;
   const records = new WeakMap();
   const recordsById = new Map();
   const queue = [];
+  const quickQueue = [];
+  const recentContext = [];
+  const siteKey = location.hostname;
   let nextId = 1;
+  let nextQuickId = 1;
   let enabled = false;
   let generation = 0;
   let activeRequests = 0;
+  let activeQuickRequests = 0;
   let activeDetections = 0;
   let hasErrors = false;
   let debounceTimer;
   let floatingButton;
+  let floatingMenu;
+  let siteRule = null;
+  let activeRoots = [];
+  let selectingRegion = false;
+  let regionCandidate;
+  let stopRegionSelection;
+  let quickAction;
+  let quickPanel;
+  let quickGeneration = 0;
+  let hoverTimer;
+  let hoverTarget;
+  let contextPageUrl = location.href;
+  let siteRuleLoaded = !chrome.storage?.local;
+
+  const siteRuleReady = chrome.storage?.local
+    ? chrome.storage.local.get("siteRules").then(({siteRules = {}}) => {
+        siteRule = siteRules[siteKey] || null;
+        siteRuleLoaded = true;
+      }).catch(() => { siteRuleLoaded = true; })
+    : Promise.resolve();
 
   const viewportObserver = new IntersectionObserver((entries) => {
     if (!enabled) return;
@@ -87,6 +113,43 @@
     return text.length >= 2 && text.length <= MAX_PARAGRAPH_CHARACTERS && !/^[\d\s.,:%+\-–—/()]+$/u.test(text);
   }
 
+  function hasCjk(text) {
+    return /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text);
+  }
+
+  function requestContext() {
+    if (contextPageUrl !== location.href) {
+      contextPageUrl = location.href;
+      recentContext.length = 0;
+    }
+    return {
+      pageTitle: document.title.slice(0, 300),
+      previousText: recentContext.slice(-3).map(({source, translation}) => `${source}\n${translation}`).join("\n\n").slice(-1600),
+    };
+  }
+
+  function rememberContext(source, translation) {
+    recentContext.push({source: source.slice(0, 500), translation: translation.slice(0, 500)});
+    if (recentContext.length > 6) recentContext.shift();
+  }
+
+  function isInActiveRoot(element) {
+    return activeRoots.some((root) => root === element || root.contains(element));
+  }
+
+  async function saveSiteRule(nextRule) {
+    siteRule = nextRule?.selector || nextRule?.disabled ? {
+      ...(nextRule.selector ? {selector: nextRule.selector} : {}),
+      ...(nextRule.disabled ? {disabled: true} : {}),
+    } : null;
+    if (!chrome.storage?.local) return;
+    const {siteRules = {}} = await chrome.storage.local.get("siteRules");
+    if (siteRule) siteRules[siteKey] = siteRule;
+    else delete siteRules[siteKey];
+    await chrome.storage.local.set({siteRules});
+    refreshMenuState();
+  }
+
   function formatTranslation(source, text) {
     const normalized = text.replace(/\r\n?/g, "\n").trim();
     if (!source.includes("\n")) return normalized;
@@ -99,7 +162,7 @@
     let record = records.get(element);
     if (record) return record;
 
-    record = {id: `p-${nextId++}`, element, node: null, status: "idle", text: "", generation: -1};
+    record = {id: `p-${nextId++}`, element, node: null, status: "idle", text: "", translation: "", generation: -1};
     records.set(element, record);
     recordsById.set(record.id, record);
     return record;
@@ -133,6 +196,8 @@
       ready: ["✓", "当前可见内容已翻译，滚动继续，点击停止"],
       error: ["!", "部分内容翻译失败，点击停止"],
       cancelled: ["停", "翻译已取消，点击重新开始"],
+      selecting: ["选", "点击网页正文区域，按 Esc 取消"],
+      disabled: ["禁", "此网站已禁用翻译，右键可重新启用"],
     };
     const [text, label] = states[status];
     floatingButton.dataset.status = status;
@@ -142,8 +207,12 @@
   }
 
   function refreshFloatingStatus() {
-    if (!enabled) return;
-    setFloatingStatus(activeDetections || activeRequests || queue.length ? "translating" : hasErrors ? "error" : "ready");
+    if (siteRule?.disabled) {
+      setFloatingStatus("disabled");
+      return;
+    }
+    if (selectingRegion || !enabled) return;
+    setFloatingStatus(activeDetections || activeRequests || activeQuickRequests || queue.length || quickQueue.length ? "translating" : hasErrors ? "error" : "ready");
   }
 
   function createFloatingButton() {
@@ -161,11 +230,16 @@
     menu.setAttribute("role", "menu");
     menu.popover = "auto";
     floatingButton = button;
+    floatingMenu = menu;
     setFloatingStatus("idle");
 
     const closeMenu = () => menu.matches(":popover-open") && menu.hidePopover();
     const actions = [
       ["cancel", "取消翻译", cancelTranslation],
+      ["retry", "重试失败", retryFailures],
+      ["select-region", "选择翻译区域", beginRegionSelection],
+      ["clear-region", "清除区域规则", clearRegionRule],
+      ["site-toggle", "禁用此网站", toggleSite],
       ["original", "恢复原文", () => document.documentElement.classList.add("bwt-show-original")],
       ["translations", "显示译文", () => document.documentElement.classList.remove("bwt-show-original")],
     ];
@@ -177,17 +251,19 @@
       item.textContent = label;
       item.addEventListener("click", () => {
         closeMenu();
-        handler();
+        Promise.resolve(handler()).catch(() => {});
       });
       menu.append(item);
     }
 
     button.addEventListener("click", () => {
       closeMenu();
-      enabled ? cancelTranslation() : startTranslation();
+      if (selectingRegion) stopRegionSelection?.();
+      else enabled ? cancelTranslation() : startTranslation();
     });
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
+      refreshMenuState();
       if (!menu.matches(":popover-open")) menu.showPopover();
       menu.querySelector("button")?.focus();
     });
@@ -195,23 +271,44 @@
     (document.body || document.documentElement).append(button, menu);
   }
 
+  function refreshMenuState() {
+    if (!floatingMenu) return;
+    const failed = [...recordsById.values()].some((record) => record.status === "error");
+    const retry = floatingMenu.querySelector('[data-action="retry"]');
+    const clear = floatingMenu.querySelector('[data-action="clear-region"]');
+    const toggle = floatingMenu.querySelector('[data-action="site-toggle"]');
+    if (retry) retry.disabled = !failed;
+    if (clear) clear.disabled = !siteRule?.selector;
+    if (toggle) toggle.textContent = siteRule?.disabled ? "启用此网站" : "禁用此网站";
+  }
+
   function discoverCandidates() {
     let roots = [];
-    for (const selector of ['main article,[role="main"] article', 'main,[role="main"]', "article"]) {
-      roots = [...document.querySelectorAll(selector)].filter((root) =>
-        !root.closest(EXCLUDED_SELECTOR) && !root.parentElement?.closest(selector)
-      );
-      if (roots.length > 1) {
-        // ponytail: Largest semantic root is the MVP article heuristic; add site rules when a real page disproves it.
-        roots = [roots.reduce((largest, root) => root.textContent.length > largest.textContent.length ? root : largest)];
+    if (siteRule?.selector) {
+      try {
+        const selected = document.querySelector(siteRule.selector);
+        if (selected && !selected.closest(EXCLUDED_SELECTOR)) roots = [selected];
+      } catch {}
+    }
+    if (!roots.length) {
+      for (const selector of ['main article,[role="main"] article', 'main,[role="main"]', "article"]) {
+        roots = [...document.querySelectorAll(selector)].filter((root) =>
+          !root.closest(EXCLUDED_SELECTOR) && !root.parentElement?.closest(selector)
+        );
+        if (roots.length > 1) {
+          // ponytail: Largest semantic root is the fallback heuristic; the user can save a site region when it misses.
+          roots = [roots.reduce((largest, root) => root.textContent.length > largest.textContent.length ? root : largest)];
+        }
+        if (roots.length) break;
       }
-      if (roots.length) break;
     }
     if (!roots.length && document.body) roots.push(document.body);
+    activeRoots = roots;
 
     const seen = new Set();
     for (const root of roots) {
-      for (const element of root.querySelectorAll(CANDIDATE_SELECTOR)) {
+      const candidates = root.matches(CANDIDATE_SELECTOR) ? [root, ...root.querySelectorAll(CANDIDATE_SELECTOR)] : root.querySelectorAll(CANDIDATE_SELECTOR);
+      for (const element of candidates) {
         if (seen.has(element) || element.closest(EXCLUDED_SELECTOR)) continue;
         if (element.matches("div") && element.querySelector(`${CANDIDATE_SELECTOR},button`)) continue;
         seen.add(element);
@@ -239,7 +336,7 @@
 
     record.text = text;
     record.generation = generation;
-    if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text)) {
+    if (hasCjk(text)) {
       record.node?.remove();
       record.node = null;
       record.status = "skipped";
@@ -283,6 +380,31 @@
     });
   }
 
+  function sendQuickMessage(message, token) {
+    return new Promise((resolve, reject) => {
+      quickQueue.push({message, token, resolve, reject});
+      pumpQuickQueue();
+    });
+  }
+
+  function pumpQuickQueue() {
+    while (activeRequests + activeQuickRequests < MAX_CONCURRENT_REQUESTS && quickQueue.length) {
+      const job = quickQueue.shift();
+      if (job.token !== quickGeneration || siteRule?.disabled) {
+        job.reject(new Error("翻译已取消"));
+        continue;
+      }
+      activeQuickRequests += 1;
+      sendMessage(job.message)
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          activeQuickRequests -= 1;
+          pumpQuickQueue();
+          pumpQueue();
+        });
+    }
+  }
+
   async function translate(job) {
     const {record, text, generation: jobGeneration} = job;
     setTranslation(record, "正在翻译…", "pending");
@@ -290,7 +412,10 @@
     try {
       const response = await sendMessage({
         type: "BWT_TRANSLATE_BATCH",
+        scope: "page",
         sourceLanguage: "en",
+        targetLanguage: "zh-CN",
+        context: requestContext(),
         paragraphs: [{id: record.id, text}],
       });
       if (jobGeneration !== generation || record.status !== "pending" || record.text !== text) return;
@@ -299,38 +424,163 @@
       if (response?.translations?.length !== 1 || translation?.id !== record.id || typeof translation.text !== "string") {
         throw new Error("翻译服务返回了无效结果");
       }
-      setTranslation(record, formatTranslation(text, translation.text), "done");
+      record.translation = formatTranslation(text, translation.text);
+      setTranslation(record, record.translation, "done");
+      rememberContext(text, record.translation);
     } catch (error) {
       if (jobGeneration === generation && enabled && record.status === "pending" && record.text === text) {
         hasErrors = true;
-        setTranslation(record, "翻译失败，点击扩展重试", "error");
+        setTranslation(record, "翻译失败，请右键悬浮球重试", "error");
+        refreshMenuState();
       }
     }
   }
 
   function pumpQueue() {
-    while (enabled && activeRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
+    while (enabled && activeRequests + activeQuickRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
       const job = queue.shift();
       if (job.generation !== generation || job.record.status !== "queued") continue;
       activeRequests += 1;
       translate(job).finally(() => {
         if (job.generation === generation) activeRequests -= 1;
+        pumpQuickQueue();
         pumpQueue();
         refreshFloatingStatus();
       });
     }
   }
 
-  function startTranslation() {
+  function retryFailures() {
+    if (siteRule?.disabled) return;
+    enabled = true;
+    hasErrors = false;
+    for (const record of recordsById.values()) {
+      if (record.status !== "error" || !record.element.isConnected || !isInActiveRoot(record.element)) continue;
+      record.node?.remove();
+      record.node = null;
+      record.status = "idle";
+      enqueue(record.element);
+    }
+    refreshMenuState();
+    refreshFloatingStatus();
+  }
+
+  function selectorFor(element) {
+    if (element.id) {
+      const selector = `#${CSS.escape(element.id)}`;
+      if (document.querySelectorAll(selector).length === 1) return selector;
+    }
+    for (const attribute of ["data-testid", "data-test", "data-qa", "role"]) {
+      const value = element.getAttribute(attribute);
+      if (!value) continue;
+      const selector = `${element.localName}[${attribute}="${CSS.escape(value)}"]`;
+      if (document.querySelectorAll(selector).length === 1) return selector;
+    }
+
+    const parts = [];
+    for (let current = element; current && current !== document.body; current = current.parentElement) {
+      let part = current.localName;
+      const siblings = current.parentElement ? [...current.parentElement.children].filter((node) => node.localName === current.localName) : [];
+      if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(current) + 1})`;
+      parts.unshift(part);
+      const selector = parts.join(" > ");
+      if (document.querySelectorAll(selector).length === 1) return selector;
+    }
+    return "body";
+  }
+
+  function regionFromTarget(target) {
+    if (!(target instanceof Element) || target.closest(EXCLUDED_SELECTOR)) return null;
+    return target.closest('article,main,section,[role="main"],div') || target.closest(CANDIDATE_SELECTOR);
+  }
+
+  async function beginRegionSelection() {
+    await siteRuleReady;
+    if (siteRule?.disabled) {
+      setFloatingStatus("disabled");
+      return;
+    }
+    await cancelTranslation();
+    selectingRegion = true;
+    setFloatingStatus("selecting");
+
+    const cleanup = (status = siteRule?.disabled ? "disabled" : "idle") => {
+      selectingRegion = false;
+      regionCandidate?.classList.remove("bwt-region-candidate");
+      regionCandidate = null;
+      document.removeEventListener("mouseover", onHover, true);
+      document.removeEventListener("click", onChoose, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+      stopRegionSelection = null;
+      setFloatingStatus(status);
+    };
+    const onHover = (event) => {
+      const candidate = regionFromTarget(event.target);
+      if (!candidate || candidate === regionCandidate) return;
+      regionCandidate?.classList.remove("bwt-region-candidate");
+      regionCandidate = candidate;
+      regionCandidate.classList.add("bwt-region-candidate");
+    };
+    const onChoose = async (event) => {
+      if (!regionCandidate) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const selected = regionCandidate;
+      cleanup("translating");
+      await saveSiteRule({selector: selectorFor(selected)});
+      await removeTranslations();
+      startTranslation();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") cleanup();
+    };
+    stopRegionSelection = cleanup;
+    document.addEventListener("mouseover", onHover, true);
+    document.addEventListener("click", onChoose, true);
+    document.addEventListener("keydown", onKeyDown, true);
+  }
+
+  async function clearRegionRule() {
+    await siteRuleReady;
+    await saveSiteRule({disabled: siteRule?.disabled});
+    await removeTranslations();
+    if (!siteRule?.disabled) startTranslation();
+  }
+
+  async function toggleSite() {
+    await siteRuleReady;
+    const disabled = !siteRule?.disabled;
+    await saveSiteRule({selector: siteRule?.selector, disabled});
+    if (disabled) {
+      await cancelTranslation();
+      setFloatingStatus("disabled");
+    } else {
+      setFloatingStatus("idle");
+    }
+  }
+
+  async function startTranslation() {
+    if (!siteRuleLoaded) await siteRuleReady;
+    if (siteRule?.disabled) {
+      enabled = false;
+      setFloatingStatus("disabled");
+      return false;
+    }
     enabled = true;
     hasErrors = false;
     viewportObserver.disconnect();
     document.documentElement.classList.remove("bwt-show-original");
     setFloatingStatus("translating");
     if (!discoverCandidates()) refreshFloatingStatus();
+    return true;
   }
 
   async function cancelTranslation() {
+    if (selectingRegion) stopRegionSelection?.("cancelled");
+    quickGeneration += 1;
+    quickAction && (quickAction.hidden = true);
+    quickPanel && (quickPanel.hidden = true);
+    for (const job of quickQueue.splice(0)) job.reject(new Error("翻译已取消"));
     enabled = false;
     generation += 1;
     activeDetections = 0;
@@ -356,6 +606,7 @@
     record.node = null;
     record.status = "idle";
     record.text = "";
+    record.translation = "";
     record.generation = -1;
     viewportObserver.unobserve?.(element);
     viewportObserver.observe(element);
@@ -365,21 +616,153 @@
     await cancelTranslation();
     document.documentElement.classList.remove("bwt-show-original");
     document.querySelectorAll(".bwt-translation").forEach((node) => node.remove());
+    recentContext.length = 0;
     for (const record of recordsById.values()) {
       record.node = null;
       record.status = "idle";
+      record.translation = "";
       record.generation = -1;
     }
   }
 
+  function detectEnglish(text) {
+    if (!isTranslatable(text) || text.length > MAX_QUICK_CHARACTERS || hasCjk(text)) return Promise.resolve(false);
+    return new Promise((resolve) => chrome.i18n.detectLanguage(text, (result) => {
+      const primary = result?.languages?.[0];
+      resolve(Boolean(primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80)));
+    }));
+  }
+
+  function placeQuickControl(element, rect) {
+    const left = Math.max(8, Math.min(innerWidth - 260, rect.left));
+    const top = Math.max(8, Math.min(innerHeight - 80, rect.bottom + 8));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+  }
+
+  async function showQuickTranslation(text, rect, existingTranslation = "") {
+    const token = ++quickGeneration;
+    quickAction.hidden = true;
+    quickPanel.hidden = false;
+    quickPanel.textContent = existingTranslation || "正在翻译…";
+    placeQuickControl(quickPanel, rect);
+    if (existingTranslation) return;
+    if (siteRule?.disabled) {
+      quickPanel.textContent = "此网站已禁用翻译";
+      return;
+    }
+    const english = await detectEnglish(text);
+    if (token !== quickGeneration || siteRule?.disabled) return;
+    if (!english) {
+      if (token === quickGeneration) quickPanel.textContent = "当前仅支持英文";
+      return;
+    }
+
+    const id = `quick-${nextQuickId++}`;
+    try {
+      const response = await sendQuickMessage({
+        type: "BWT_TRANSLATE_BATCH",
+        scope: "quick",
+        sourceLanguage: "en",
+        targetLanguage: "zh-CN",
+        context: requestContext(),
+        paragraphs: [{id, text}],
+      }, token);
+      const [translation] = response?.translations || [];
+      if (response?.ok === false) throw new Error(response.error || "翻译失败");
+      if (translation?.id !== id || typeof translation.text !== "string") throw new Error("翻译服务返回了无效结果");
+      if (token === quickGeneration) quickPanel.textContent = formatTranslation(text, translation.text);
+    } catch (error) {
+      if (token === quickGeneration) quickPanel.textContent = error.message || "翻译失败";
+    }
+  }
+
+  function createQuickControls() {
+    quickAction = document.createElement("button");
+    quickPanel = document.createElement("div");
+    quickAction.type = "button";
+    quickAction.className = "bwt-selection-action";
+    quickAction.dataset.bwtControl = "";
+    quickAction.textContent = "译";
+    quickAction.setAttribute("aria-label", "翻译选中文本");
+    quickAction.hidden = true;
+    quickPanel.className = "bwt-quick-translation";
+    quickPanel.dataset.bwtControl = "";
+    quickPanel.setAttribute("role", "status");
+    quickPanel.setAttribute("aria-live", "polite");
+    quickPanel.hidden = true;
+    (document.body || document.documentElement).append(quickAction, quickPanel);
+
+    quickAction.addEventListener("mousedown", (event) => event.preventDefault());
+    quickAction.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const rect = quickAction.getBoundingClientRect();
+      showQuickTranslation(quickAction.dataset.text || "", rect);
+    });
+
+    document.addEventListener("mouseup", (event) => setTimeout(() => {
+      if (event.target.closest?.("[data-bwt-control]") || selectingRegion || siteRule?.disabled) return;
+      const selection = getSelection();
+      const text = selection?.toString().replace(/\s+/g, " ").trim() || "";
+      if (!text || text.length > MAX_QUICK_CHARACTERS || hasCjk(text) || !selection.rangeCount) {
+        quickAction.hidden = true;
+        return;
+      }
+      const container = selection.getRangeAt(0).commonAncestorContainer;
+      const parent = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+      if (parent?.closest(EXCLUDED_SELECTOR)) return;
+      quickAction.dataset.text = text;
+      placeQuickControl(quickAction, selection.getRangeAt(0).getBoundingClientRect());
+      quickAction.hidden = false;
+    }, 0), true);
+
+    document.addEventListener("mouseover", (event) => {
+      clearTimeout(hoverTimer);
+      if (!event.altKey || selectingRegion || siteRule?.disabled || event.target.closest?.("[data-bwt-control]")) return;
+      const element = event.target.closest?.(CANDIDATE_SELECTOR);
+      if (!element || element.closest(EXCLUDED_SELECTOR)) return;
+      const text = paragraphText(element);
+      if (!isTranslatable(text) || text.length > MAX_QUICK_CHARACTERS || hasCjk(text)) return;
+      const rect = element.getBoundingClientRect();
+      hoverTarget = element;
+      hoverTimer = setTimeout(() => {
+        const record = records.get(element);
+        showQuickTranslation(text, rect, record?.status === "done" ? record.translation : "");
+      }, 400);
+    }, true);
+
+    document.addEventListener("mouseout", (event) => {
+      const element = event.target.closest?.(CANDIDATE_SELECTOR);
+      if (element !== hoverTarget || element.contains(event.relatedTarget)) return;
+      clearTimeout(hoverTimer);
+      hoverTarget = null;
+      quickGeneration += 1;
+      quickPanel.hidden = true;
+    }, true);
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      quickGeneration += 1;
+      quickAction.hidden = true;
+      quickPanel.hidden = true;
+    }, true);
+  }
+
   createFloatingButton();
+  createQuickControls();
+  siteRuleReady.then(() => {
+    refreshMenuState();
+    if (siteRule?.disabled) setFloatingStatus("disabled");
+  });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message?.type?.startsWith("BWT_")) return;
 
     if (["BWT_TRANSLATE", "BWT_TRANSLATE_PAGE"].includes(message.type)) {
-      startTranslation();
-      sendResponse({ok: true, message: "已开始按可视区域翻译"});
+      startTranslation()
+        .then((started) => sendResponse({ok: started, ...(started ? {message: "已开始按可视区域翻译"} : {error: "此网站已禁用翻译"})}))
+        .catch((error) => sendResponse({ok: false, error: error.message}));
+      return true;
     } else if (message.type === "BWT_CANCEL_TRANSLATION") {
       cancelTranslation()
         .then((result) => sendResponse({ok: true, message: `已取消翻译（中止 ${result.cancelled || 0} 个请求）`}))
@@ -409,7 +792,7 @@
     for (const mutation of mutations) {
       if (mutation.type === "characterData") {
         const element = mutation.target.parentElement?.closest(CANDIDATE_SELECTOR);
-        if (element && !element.closest(EXCLUDED_SELECTOR)) changed.add(element);
+        if (element && isInActiveRoot(element) && !element.closest(EXCLUDED_SELECTOR)) changed.add(element);
       } else if ([...mutation.addedNodes].some((node) => {
         if (node.nodeType === Node.TEXT_NODE) return !node.parentElement?.closest(EXCLUDED_SELECTOR);
         return node.nodeType === Node.ELEMENT_NODE && !node.closest(".bwt-translation");

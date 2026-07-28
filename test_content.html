@@ -17,7 +17,7 @@
         observe(target) {
           this.targets.add(target);
           if (target.dataset.visible === "true") {
-            setTimeout(() => this.callback([{target, isIntersecting: true}]));
+            setTimeout(() => this.callback([{target, isIntersecting: true}]), 80);
           }
         }
         disconnect() { this.targets.clear(); }
@@ -61,6 +61,7 @@
       setTimeout(() => {
         let cancelResponse;
         let initialVisibleOnly = false;
+        let waitingForViewport = false;
         let initialErrorState = false;
         let enteredViewportState = false;
         const floatingButton = document.querySelector(".bwt-floating-button");
@@ -76,6 +77,13 @@
         floatingButton?.click();
 
         setTimeout(() => {
+          waitingForViewport =
+            window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH").length === 0 &&
+            floatingButton?.textContent === "…" &&
+            floatingButton.dataset.status === "translating";
+        }, 60);
+
+        setTimeout(() => {
           const initialBatches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           initialVisibleOnly =
             document.querySelectorAll(".bwt-translation--pending").length === 4 &&
@@ -83,7 +91,7 @@
             initialBatches.length === 3 &&
             floatingButton?.textContent === "…" &&
             floatingButton.dataset.status === "translating";
-        }, 30);
+        }, 110);
 
         setTimeout(() => {
           initialErrorState = floatingButton?.textContent === "!" && floatingButton.dataset.status === "error";
@@ -92,7 +100,7 @@
             enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";
             window.__contentListener({type: "BWT_CANCEL_TRANSLATION"}, {}, (value) => { cancelResponse = value; });
           }, 20);
-        }, 180);
+        }, 270);
 
         setTimeout(() => {
           const translations = [...document.querySelectorAll(".bwt-translation")];
@@ -101,6 +109,7 @@
           const belowTranslation = document.querySelector("#below + .bwt-translation");
           const passed =
             initialFloatingButton &&
+            waitingForViewport &&
             initialVisibleOnly &&
             initialErrorState &&
             enteredViewportState &&
@@ -119,7 +128,7 @@
             document.querySelector("#paragraph").textContent === "Hello world";
           document.body.dataset.test = passed ? "passed" : "failed";
           document.title = `content test ${document.body.dataset.test}`;
-        }, 750);
+        }, 800);
       });
     </script>
   </body>

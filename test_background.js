@@ -7,6 +7,9 @@ let fetchMode = "success";
 let lastSignal;
 const settings = {apiUrl: "https://example.test/v1/chat/completions", model: "test-model", apiKey: "secret"};
 const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+const popupSource = fs.readFileSync("popup.js", "utf8");
+assert(manifest.permissions.includes("scripting"));
+assert.match(popupSource, /chrome\.scripting\.executeScript/);
 assert.deepEqual(manifest.content_scripts, [{
   matches: ["http://*/*", "https://*/*"],
   js: ["content.js"],

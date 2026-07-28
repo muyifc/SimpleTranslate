@@ -10,6 +10,17 @@
   white-space: pre-wrap;
 }
 
+.bwt-translation--pending {
+  color: #64748b;
+  font-style: italic;
+  opacity: 0.65;
+}
+
+.bwt-translation--error {
+  border-inline-start-color: #dc2626;
+  color: #dc2626;
+}
+
 li > .bwt-translation,
 td > .bwt-translation,
 th > .bwt-translation {

@@ -3,7 +3,7 @@
   if (document.documentElement.hasAttribute(READY_ATTRIBUTE)) return;
   document.documentElement.setAttribute(READY_ATTRIBUTE, "");
 
-  const CANDIDATE_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,td,th";
+  const CANDIDATE_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,td,th,div";
   const EXCLUDED_SELECTOR = [
     "script",
     "style",
@@ -22,8 +22,9 @@
     "footer",
     ".bwt-translation",
   ].join(",");
-  const BATCH_SIZE = 10;
-  const BATCH_CHARACTERS = 6000;
+  const MAX_PARAGRAPH_CHARACTERS = 6000;
+  // ponytail: Three concurrent requests keeps first paint quick without immediately hitting common API limits.
+  const MAX_CONCURRENT_REQUESTS = 3;
   const records = new WeakMap();
   const recordsById = new Map();
   let nextId = 1;
@@ -53,7 +54,7 @@
 
   function isTranslatable(text) {
     // ponytail: Skip unusually large single paragraphs; split them only if real pages need it.
-    return text.length >= 2 && text.length <= BATCH_CHARACTERS && !/^[\d\s.,:%+\-–—/()]+$/u.test(text);
+    return text.length >= 2 && text.length <= MAX_PARAGRAPH_CHARACTERS && !/^[\d\s.,:%+\-–—/()]+$/u.test(text);
   }
 
   function getRecord(element) {
@@ -66,6 +67,26 @@
     return record;
   }
 
+  function setTranslation(record, text, status) {
+    if (!record.element.isConnected) return false;
+
+    let translation = record.node;
+    if (!translation?.isConnected) {
+      translation = document.createElement("div");
+      translation.dataset.sourceId = record.id;
+      translation.lang = "zh-CN";
+      translation.dir = "auto";
+      if (record.element.matches("li,td,th")) record.element.append(translation);
+      else record.element.insertAdjacentElement("afterend", translation);
+      record.node = translation;
+    }
+
+    translation.className = `bwt-translation bwt-translation--${status}`;
+    translation.textContent = text;
+    record.status = status;
+    return true;
+  }
+
   function scan() {
     const roots = [...document.querySelectorAll('article,main,[role="main"]')];
     if (!roots.length && document.body) roots.push(document.body);
@@ -75,6 +96,7 @@
     for (const root of roots) {
       for (const element of root.querySelectorAll(CANDIDATE_SELECTOR)) {
         if (seen.has(element) || element.closest(EXCLUDED_SELECTOR)) continue;
+        if (element.matches("div") && element.querySelector(`${CANDIDATE_SELECTOR},button`)) continue;
         seen.add(element);
 
         const text = paragraphText(element);
@@ -91,29 +113,11 @@
         record.node?.remove();
         record.node = null;
         record.text = text;
-        record.status = "pending";
+        setTranslation(record, "即将翻译…", "pending");
         pending.push({ id: record.id, text });
       }
     }
     return pending;
-  }
-
-  function batches(paragraphs) {
-    const result = [];
-    let batch = [];
-    let characters = 0;
-
-    for (const paragraph of paragraphs) {
-      if (batch.length && (batch.length >= BATCH_SIZE || characters + paragraph.text.length > BATCH_CHARACTERS)) {
-        result.push(batch);
-        batch = [];
-        characters = 0;
-      }
-      batch.push(paragraph);
-      characters += paragraph.text.length;
-    }
-    if (batch.length) result.push(batch);
-    return result;
   }
 
   function sendMessage(message) {
@@ -127,39 +131,42 @@
   }
 
   function render(record, text) {
-    if (record.status !== "pending" || !record.element.isConnected || typeof text !== "string") return false;
-
-    const translation = document.createElement("div");
-    translation.className = "bwt-translation";
-    translation.dataset.sourceId = record.id;
-    translation.lang = "zh-CN";
-    translation.dir = "auto";
-    translation.textContent = text;
-
-    if (record.element.matches("li,td,th")) record.element.append(translation);
-    else record.element.insertAdjacentElement("afterend", translation);
-
-    record.node = translation;
-    record.status = "done";
-    return true;
+    return record.status === "pending" && typeof text === "string" && setTranslation(record, text, "done");
   }
 
-  async function translateBatch(paragraphs) {
-    const response = await sendMessage({ type: "BWT_TRANSLATE_BATCH", paragraphs });
+  async function translateParagraph(paragraph) {
+    const record = recordsById.get(paragraph.id);
+    setTranslation(record, "正在翻译…", "pending");
+    const response = await sendMessage({ type: "BWT_TRANSLATE_BATCH", paragraphs: [paragraph] });
     if (!response || response.ok === false || !Array.isArray(response.translations)) {
       throw new Error(response?.error || "翻译服务返回了无效结果");
     }
 
-    const translatedIds = new Set();
-    for (const translation of response.translations) {
-      const record = recordsById.get(translation?.id);
-      if (!record) continue;
-      if (render(record, translation.text)) translatedIds.add(record.id);
+    const [translation] = response.translations;
+    if (response.translations.length !== 1 || translation?.id !== paragraph.id || !render(record, translation.text)) {
+      throw new Error("翻译服务返回了无效结果");
+    }
+  }
+
+  async function translateParagraphs(paragraphs) {
+    let next = 0;
+    const errors = [];
+
+    async function worker() {
+      while (enabled && next < paragraphs.length) {
+        const paragraph = paragraphs[next++];
+        const record = recordsById.get(paragraph.id);
+        try {
+          await translateParagraph(paragraph);
+        } catch (error) {
+          setTranslation(record, "翻译失败，点击扩展重试", "error");
+          errors.push(error);
+        }
+      }
     }
 
-    for (const paragraph of paragraphs) {
-      if (!translatedIds.has(paragraph.id)) recordsById.get(paragraph.id).status = "idle";
-    }
+    await Promise.all(Array.from({length: Math.min(MAX_CONCURRENT_REQUESTS, paragraphs.length)}, worker));
+    if (errors.length) throw new Error(`${errors.length} 个段落翻译失败：${errors[0].message}`);
   }
 
   async function runTranslation() {
@@ -173,19 +180,11 @@
         do {
           rescanRequested = false;
           const paragraphs = scan();
-          for (const batch of batches(paragraphs)) {
-            if (!enabled) {
-              for (const record of recordsById.values()) {
-                if (record.status === "pending") record.status = "idle";
-              }
-              break;
-            }
-            await translateBatch(batch);
-          }
+          await translateParagraphs(paragraphs);
         } while (enabled && rescanRequested);
       } catch (error) {
         for (const record of recordsById.values()) {
-          if (record.status === "pending") record.status = "idle";
+          if (record.status === "pending") setTranslation(record, "翻译失败，点击扩展重试", "error");
         }
         throw error;
       }
@@ -199,6 +198,11 @@
   function setOriginalOnly(originalOnly) {
     document.documentElement.classList.toggle("bwt-show-original", originalOnly);
     enabled = !originalOnly;
+    if (originalOnly) {
+      for (const record of recordsById.values()) {
+        if (record.status === "pending") record.status = "idle";
+      }
+    }
   }
 
   function removeTranslations() {

@@ -16,7 +16,7 @@
 - 保留原文，提供双语对照显示。
 - 自动识别页面语言，目标语言固定为简体中文。
 - 调用一个 OpenAI-compatible 翻译接口。
-- 批量翻译多个段落，避免逐句请求。
+- 逐段独立翻译并即时显示状态，同时限制并发请求。
 - 支持动态网页新增内容。
 - 支持恢复原文和再次显示译文。
 
@@ -45,7 +45,7 @@
         ↓
 把文本节点合并成可翻译段落
         ↓
-分批发送给扩展后台脚本
+逐段发送给扩展后台脚本（限制并发）
         ↓
 后台调用 OpenAI-compatible API
         ↓
@@ -179,9 +179,9 @@ bilingual-web-translator/
 
 ## 请求调度
 
-- 单批建议包含 5 至 20 个段落。
-- 同时限制总字符数，例如每批不超过 6,000 字符。
-- 首版串行处理批次，减少限流和结果乱序问题。
+- 每个段落独立请求，发送前先在对应位置插入占位状态。
+- 同时最多处理 3 个请求，避免触发常见接口限流。
+- 单个段落不超过 6,000 字符，结果返回后立即替换对应占位。
 - 请求失败时保留原文，并在弹窗中显示错误。
 - 同一页面重复点击时复用当前会话缓存。
 
@@ -225,7 +225,7 @@ bilingual-web-translator/
 
 ### 阶段 2：可用 MVP
 
-- 增加批量翻译和错误提示。
+- 增加逐段翻译、占位状态和错误提示。
 - 增加设置页或简易配置区域。
 - 增加 `MutationObserver` 动态内容翻译。
 - 增加恢复原文和重复点击保护。
@@ -267,4 +267,3 @@ bilingual-web-translator/
 - 已归档的旧版源码：<https://github.com/immersive-translate/old-immersive-translate>
 - Chrome 内容脚本文档：<https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts>
 - MutationObserver 文档：<https://developer.mozilla.org/docs/Web/API/MutationObserver>
-

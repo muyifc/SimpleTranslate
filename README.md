@@ -1,6 +1,6 @@
 # 双语网页翻译
 
-一个无需构建的 Chrome / Edge Manifest V3 扩展。点击扩展按钮后，它会识别当前网页正文，通过用户配置的 OpenAI-compatible Chat Completions 接口批量翻译，并把简体中文译文插入原文下方。
+一个无需构建的 Chrome / Edge Manifest V3 扩展。点击扩展按钮后，它会识别当前网页正文，通过用户配置的 OpenAI-compatible Chat Completions 接口逐段翻译，并把简体中文译文插入原文下方。
 
 ## 安装
 
@@ -15,9 +15,9 @@
 ## 当前范围
 
 - 正文候选：`article`、`main`、`[role="main"]`，否则回退到 `body`。
-- 段落候选：标题、段落、列表项、引用和表格单元格。
+- 段落候选：标题、段落、文本型 `div`、列表项、引用和表格单元格。
 - 排除导航、页眉页脚、代码、表单、可编辑区域和 `translate="no"` 内容。
-- 批次串行请求，每批最多 20 段且不超过约 6000 字符。
+- 每段独立请求，最多同时处理 3 段，并在请求前显示占位状态。
 - 支持动态新增内容、隐藏译文和再次显示译文。
 
 详细范围见 [实施方案](docs/bilingual_web_translation_extension_plan.md)。

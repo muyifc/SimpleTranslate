@@ -89,12 +89,15 @@ html.bwt-show-original .bwt-translation {
   position: fixed !important;
   top: 50% !important;
   right: 82px !important;
+  bottom: auto !important;
+  left: auto !important;
   z-index: 2147483647 !important;
   display: grid !important;
   min-width: 120px !important;
   box-sizing: border-box !important;
   gap: 2px !important;
   padding: 6px !important;
+  margin: 0 !important;
   transform: translateY(-50%) !important;
   border: 1px solid #dbe2ea !important;
   border-radius: 10px !important;
@@ -102,7 +105,7 @@ html.bwt-show-original .bwt-translation {
   box-shadow: 0 8px 24px #0003 !important;
 }
 
-.bwt-floating-menu[hidden] {
+.bwt-floating-menu:not(:popover-open) {
   display: none !important;
 }
 

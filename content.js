@@ -132,15 +132,11 @@
     menu.className = "bwt-floating-menu";
     menu.dataset.bwtControl = "";
     menu.setAttribute("role", "menu");
-    menu.hidden = true;
+    menu.popover = "auto";
     floatingButton = button;
     setFloatingStatus("idle");
 
-    const closeMenu = (refocus = false) => {
-      menu.hidden = true;
-      button.setAttribute("aria-expanded", "false");
-      if (refocus) button.focus();
-    };
+    const closeMenu = () => menu.matches(":popover-open") && menu.hidePopover();
     const actions = [
       ["cancel", "取消翻译", cancelTranslation],
       ["original", "恢复原文", () => document.documentElement.classList.add("bwt-show-original")],
@@ -165,19 +161,10 @@
     });
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      menu.hidden = false;
-      button.setAttribute("aria-expanded", "true");
+      if (!menu.matches(":popover-open")) menu.showPopover();
       menu.querySelector("button")?.focus();
     });
-    document.addEventListener("pointerdown", (event) => {
-      if (!menu.hidden && event.target !== button && !menu.contains(event.target)) closeMenu();
-    }, true);
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !menu.hidden) {
-        event.preventDefault();
-        closeMenu(true);
-      }
-    }, true);
+    menu.addEventListener("toggle", (event) => button.setAttribute("aria-expanded", String(event.newState === "open")));
     (document.body || document.documentElement).append(button, menu);
   }
 

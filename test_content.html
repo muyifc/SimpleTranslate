@@ -103,19 +103,19 @@
           const menuStyle = floatingMenu && getComputedStyle(floatingMenu);
           const menuItems = [...(floatingMenu?.querySelectorAll('[role="menuitem"]') || [])];
           contextMenuState =
-            floatingMenu?.hidden === false &&
+            floatingMenu?.matches(":popover-open") &&
             menuStyle.position === "fixed" &&
             menuStyle.right === "82px" &&
             menuItems.map((item) => item.textContent).join("|") === "取消翻译|恢复原文|显示译文";
           menuItems[1]?.click();
           restoreOriginalState =
             document.documentElement.classList.contains("bwt-show-original") &&
-            floatingMenu?.hidden === true;
+            !floatingMenu?.matches(":popover-open");
           floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
           menuItems[2]?.click();
           showTranslationsState =
             !document.documentElement.classList.contains("bwt-show-original") &&
-            floatingMenu?.hidden === true;
+            !floatingMenu?.matches(":popover-open");
           window.__viewportObserver?.trigger(document.querySelector("#below"));
           setTimeout(() => {
             enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";

@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>content test pending</title>
+    <script>
+      window.__messages = [];
+      window.__activeRequests = 0;
+      window.__maxActiveRequests = 0;
+      window.chrome ||= {};
+      window.chrome.runtime = {
+        lastError: null,
+        onMessage: {addListener(listener) { window.__contentListener = listener; }},
+        sendMessage(message, callback) {
+          window.__messages.push(message);
+          window.__activeRequests += 1;
+          window.__maxActiveRequests = Math.max(window.__maxActiveRequests, window.__activeRequests);
+          const paragraph = message.paragraphs[0];
+          setTimeout(() => {
+            window.__activeRequests -= 1;
+            callback(paragraph.text.includes("Failure")
+              ? {ok: false, error: "mock failure"}
+              : {ok: true, translations: [{id: paragraph.id, text: `译文：${paragraph.text}`}]});
+          }, 30);
+        }
+      };
+    </script>
+    <script src="content.js"></script>
+  </head>
+  <body>
+    <main>
+      <p id="paragraph">Hello <strong>world</strong></p>
+      <div id="standalone">Standalone div text</div>
+      <div><p id="nested">Nested paragraph</p></div>
+      <div id="failure">Failure paragraph</div>
+    </main>
+    <script>
+      setTimeout(() => {
+        let response;
+        const finished = new Promise((resolve) => {
+          window.__contentListener({type: "BWT_TRANSLATE_PAGE"}, {}, (value) => {
+            response = value;
+            resolve();
+          });
+        });
+        const placeholdersInsertedImmediately = document.querySelectorAll(".bwt-translation--pending").length === 4;
+
+        finished.then(() => {
+          const translations = [...document.querySelectorAll(".bwt-translation")];
+          const passed =
+            placeholdersInsertedImmediately &&
+            response?.ok === false &&
+            window.__messages.length === 4 &&
+            window.__messages.every((message) => message.paragraphs.length === 1) &&
+            window.__maxActiveRequests <= 3 &&
+            translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 3 &&
+            translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1 &&
+            document.querySelector("#paragraph").textContent === "Hello world";
+          document.body.dataset.test = passed ? "passed" : "failed";
+          document.title = `content test ${document.body.dataset.test}`;
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -102,9 +102,9 @@
   function setFloatingStatus(status) {
     const states = {
       idle: ["译", "开始按需翻译"],
-      translating: ["…", "正在翻译当前可见内容"],
-      ready: ["✓", "当前可见内容已翻译，滚动后继续"],
-      error: ["!", "部分内容翻译失败，点击重试"],
+      translating: ["…", "正在翻译，点击停止"],
+      ready: ["✓", "当前可见内容已翻译，滚动继续，点击停止"],
+      error: ["!", "部分内容翻译失败，点击停止"],
       cancelled: ["停", "翻译已取消，点击重新开始"],
     };
     const [text, label] = states[status];
@@ -126,7 +126,7 @@
     button.dataset.bwtControl = "";
     floatingButton = button;
     setFloatingStatus("idle");
-    button.addEventListener("click", startTranslation);
+    button.addEventListener("click", () => enabled ? cancelTranslation() : startTranslation());
     (document.body || document.documentElement).append(button);
   }
 

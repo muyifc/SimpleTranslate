@@ -79,7 +79,8 @@
           waitingForViewport =
             window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH").length === 0 &&
             floatingButton?.textContent === "…" &&
-            floatingButton.dataset.status === "translating";
+            floatingButton.dataset.status === "translating" &&
+            floatingButton.getAttribute("aria-label") === "正在翻译，点击停止";
         }, 60);
 
         setTimeout(() => {

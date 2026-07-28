@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8">
     <title>content test pending</title>
+    <link rel="stylesheet" href="content.css">
     <script>
       window.__messages = [];
       window.__activeRequests = 0;
@@ -63,10 +64,15 @@
         let initialErrorState = false;
         let enteredViewportState = false;
         const floatingButton = document.querySelector(".bwt-floating-button");
+        const floatingStyle = floatingButton && getComputedStyle(floatingButton);
         const initialFloatingButton =
           floatingButton?.textContent === "译" &&
           floatingButton.dataset.status === "idle" &&
-          floatingButton.getAttribute("aria-label") === "开始按需翻译";
+          floatingButton.getAttribute("aria-label") === "开始按需翻译" &&
+          floatingStyle.position === "fixed" &&
+          floatingStyle.right === "18px" &&
+          floatingStyle.width === "52px" &&
+          floatingStyle.height === "52px";
         floatingButton?.click();
 
         setTimeout(() => {

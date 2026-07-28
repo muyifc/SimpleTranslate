@@ -57,13 +57,22 @@ function send(message, sender = {tab: {id: 7}}) {
   assert.deepEqual(JSON.parse(JSON.stringify(success.translations)), [{id: "p-1", text: "译文-p-1"}]);
 
   fetchMode = "pending";
-  const pending = send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "p-2", text: "Slow"}]});
+  const firstPending = send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "p-2", text: "Slow"}]});
   await new Promise((resolve) => setTimeout(resolve));
-  const cancelled = await send({type: "BWT_CANCEL_REQUESTS"});
-  assert.equal(cancelled.ok, true);
-  assert.equal(cancelled.cancelled, 1);
-  assert.equal(lastSignal.aborted, true);
-  assert.deepEqual(await pending, {ok: false, error: "翻译已取消"});
+  const firstSignal = lastSignal;
+  const firstCancellation = send({type: "BWT_CANCEL_REQUESTS"});
+  const secondPending = send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "p-3", text: "Slow again"}]});
+  const firstCancelled = await firstCancellation;
+  assert.equal(firstCancelled.cancelled, 1);
+  assert.equal(firstSignal.aborted, true);
+
+  await new Promise((resolve) => setTimeout(resolve));
+  const secondSignal = lastSignal;
+  const secondCancelled = await send({type: "BWT_CANCEL_REQUESTS"});
+  assert.equal(secondCancelled.cancelled, 1);
+  assert.equal(secondSignal.aborted, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(await firstPending)), {ok: false, error: "翻译已取消"});
+  assert.deepEqual(JSON.parse(JSON.stringify(await secondPending)), {ok: false, error: "翻译已取消"});
   console.log("background self-check passed");
 })().catch((error) => {
   console.error(error);

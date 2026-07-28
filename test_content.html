@@ -59,7 +59,6 @@
     <script src="content.js"></script>
     <script>
       setTimeout(() => {
-        let cancelResponse;
         let initialVisibleOnly = false;
         let waitingForViewport = false;
         let initialErrorState = false;
@@ -98,7 +97,7 @@
           window.__viewportObserver?.trigger(document.querySelector("#below"));
           setTimeout(() => {
             enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";
-            window.__contentListener({type: "BWT_CANCEL_TRANSLATION"}, {}, (value) => { cancelResponse = value; });
+            floatingButton?.click();
           }, 20);
         }, 270);
 
@@ -113,7 +112,6 @@
             initialVisibleOnly &&
             initialErrorState &&
             enteredViewportState &&
-            cancelResponse?.ok === true &&
             batches.length === 5 &&
             batches.every((message) => message.paragraphs.length === 1) &&
             cancellations.length === 1 &&

@@ -49,7 +49,12 @@
             window.__activeRequests -= 1;
             callback(paragraph.text.includes("Failure")
               ? {ok: false, error: "mock failure"}
-              : {ok: true, translations: [{id: paragraph.id, text: `译文：${paragraph.text}`}]});
+              : {ok: true, translations: [{
+                  id: paragraph.id,
+                  text: paragraph.text.startsWith("Translation review")
+                    ? "翻译评测： 1. 清晰度和流畅性。 2. 术语准确性。"
+                    : `译文：${paragraph.text}`
+                }]});
           }, paragraph.text.includes("Slow") ? 400 : 80);
         }
       };
@@ -59,7 +64,7 @@
     <main>
       <article>
         <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
-        <div id="standalone" data-visible="true">Standalone div text</div>
+        <div id="standalone" data-visible="true">Translation review:<br>1. Clarity and fluidity<br>2. Terminology accuracy</div>
         <div><p id="nested" data-visible="true">Nested paragraph</p></div>
         <div id="failure" data-visible="true">Failure paragraph</div>
         <p id="chinese" data-visible="true">这是一段中文正文，不应该发送给翻译服务。</p>
@@ -84,6 +89,7 @@
         let onlyEnglishMainContent = false;
         let cancelledBeforeRestart = false;
         let immediateRestartState = false;
+        let formattedListState = false;
         const floatingButton = document.querySelector(".bwt-floating-button");
         const floatingMenu = document.querySelector(".bwt-floating-menu");
         const floatingStyle = floatingButton && getComputedStyle(floatingButton);
@@ -158,6 +164,9 @@
           const cancellations = window.__messages.filter((message) => message.type === "BWT_CANCEL_REQUESTS");
           const belowTranslation = document.querySelector("#below + .bwt-translation");
           const sentTexts = batches.map((message) => message.paragraphs[0].text);
+          formattedListState =
+            sentTexts.includes("Translation review:\n1. Clarity and fluidity\n2. Terminology accuracy") &&
+            document.querySelector("#standalone + .bwt-translation")?.textContent === "翻译评测：\n1. 清晰度和流畅性。\n2. 术语准确性。";
           onlyEnglishMainContent =
             !document.querySelector("#chinese + .bwt-translation") &&
             !document.querySelector("#french + .bwt-translation") &&
@@ -180,6 +189,7 @@
             onlyEnglishMainContent &&
             cancelledBeforeRestart &&
             immediateRestartState &&
+            formattedListState &&
             batches.length === 7 &&
             batches.every((message) => message.paragraphs.length === 1 && message.sourceLanguage === "en") &&
             cancellations.length === 1 &&

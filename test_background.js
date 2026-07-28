@@ -34,6 +34,7 @@ const context = {
     assert.equal(options.headers.Authorization, "Bearer secret");
     lastSignal = options.signal;
     const request = JSON.parse(options.body);
+    assert.match(request.messages[0].content, /Preserve paragraph breaks, numbered lists, and bullet lists/);
     const input = JSON.parse(request.messages[1].content);
     assert.equal(input.sourceLanguage, "en");
     const paragraphs = input.paragraphs;

@@ -60,26 +60,39 @@
 
   function paragraphText(element) {
     const parts = [];
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
     let node;
 
     while ((node = walker.nextNode())) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.matches("br")) {
+        if (!node.closest(EXCLUDED_SELECTOR) && node.parentElement?.closest(CANDIDATE_SELECTOR) === element) parts.push("\n");
+        continue;
+      }
       const parent = node.parentElement;
       if (
+        node.nodeType === Node.TEXT_NODE &&
         parent &&
         !parent.closest(EXCLUDED_SELECTOR) &&
         parent.closest(CANDIDATE_SELECTOR) === element
       ) {
-        parts.push(node.nodeValue);
+        parts.push(node.nodeValue.replace(/\s+/g, " "));
       }
     }
 
-    return parts.join("").replace(/\s+/g, " ").trim();
+    return parts.join("").replace(/ *\n+ */g, "\n").replace(/ {2,}/g, " ").trim();
   }
 
   function isTranslatable(text) {
     // ponytail: Skip unusually large single paragraphs; split them only if real pages need it.
     return text.length >= 2 && text.length <= MAX_PARAGRAPH_CHARACTERS && !/^[\d\s.,:%+\-–—/()]+$/u.test(text);
+  }
+
+  function formatTranslation(source, text) {
+    const normalized = text.replace(/\r\n?/g, "\n").trim();
+    if (!source.includes("\n")) return normalized;
+    return normalized
+      .replace(/[ \t]+(?=(?:\d+[.)、]|[一二三四五六七八九十]+、|[-•●▪])(?:[ \t]+|$))/g, "\n")
+      .replace(/\n{3,}/g, "\n\n");
   }
 
   function getRecord(element) {
@@ -286,7 +299,7 @@
       if (response?.translations?.length !== 1 || translation?.id !== record.id || typeof translation.text !== "string") {
         throw new Error("翻译服务返回了无效结果");
       }
-      setTranslation(record, translation.text, "done");
+      setTranslation(record, formatTranslation(text, translation.text), "done");
     } catch (error) {
       if (jobGeneration === generation && enabled && record.status === "pending" && record.text === text) {
         hasErrors = true;

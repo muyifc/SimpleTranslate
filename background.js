@@ -51,7 +51,7 @@ async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage 
       messages: [
         {
           role: "system",
-          content: "You translate web paragraphs. Return only valid JSON matching {\"translations\":[{\"id\":\"...\",\"text\":\"...\"}]}. Preserve every input id exactly and never add HTML."
+          content: "You translate web paragraphs. Return only valid JSON matching {\"translations\":[{\"id\":\"...\",\"text\":\"...\"}]}. Preserve every input id exactly. Preserve paragraph breaks, numbered lists, and bullet lists. Mirror the source layout in plain text using escaped newlines, and never add HTML."
         },
         {
           role: "user",

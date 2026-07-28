@@ -121,13 +121,64 @@
 
   function createFloatingButton() {
     const button = document.createElement("button");
+    const menu = document.createElement("div");
     button.type = "button";
     button.className = "bwt-floating-button";
     button.dataset.bwtControl = "";
+    button.setAttribute("aria-haspopup", "menu");
+    button.setAttribute("aria-controls", "bwt-floating-menu");
+    button.setAttribute("aria-expanded", "false");
+    menu.id = "bwt-floating-menu";
+    menu.className = "bwt-floating-menu";
+    menu.dataset.bwtControl = "";
+    menu.setAttribute("role", "menu");
+    menu.hidden = true;
     floatingButton = button;
     setFloatingStatus("idle");
-    button.addEventListener("click", () => enabled ? cancelTranslation() : startTranslation());
-    (document.body || document.documentElement).append(button);
+
+    const closeMenu = (refocus = false) => {
+      menu.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+      if (refocus) button.focus();
+    };
+    const actions = [
+      ["cancel", "取消翻译", cancelTranslation],
+      ["original", "恢复原文", () => document.documentElement.classList.add("bwt-show-original")],
+      ["translations", "显示译文", () => document.documentElement.classList.remove("bwt-show-original")],
+    ];
+    for (const [action, label, handler] of actions) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.dataset.action = action;
+      item.setAttribute("role", "menuitem");
+      item.textContent = label;
+      item.addEventListener("click", () => {
+        closeMenu();
+        handler();
+      });
+      menu.append(item);
+    }
+
+    button.addEventListener("click", () => {
+      closeMenu();
+      enabled ? cancelTranslation() : startTranslation();
+    });
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      menu.hidden = false;
+      button.setAttribute("aria-expanded", "true");
+      menu.querySelector("button")?.focus();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!menu.hidden && event.target !== button && !menu.contains(event.target)) closeMenu();
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !menu.hidden) {
+        event.preventDefault();
+        closeMenu(true);
+      }
+    }, true);
+    (document.body || document.documentElement).append(button, menu);
   }
 
   function discoverCandidates() {

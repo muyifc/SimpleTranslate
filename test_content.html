@@ -45,7 +45,6 @@
         }
       };
     </script>
-    <script src="content.js"></script>
   </head>
   <body>
     <main>
@@ -56,24 +55,35 @@
       <div id="controls"><button type="button">Do not translate controls</button></div>
       <div id="below">Slow below viewport</div>
     </main>
+    <script src="content.js"></script>
     <script>
       setTimeout(() => {
-        let startResponse;
         let cancelResponse;
         let initialVisibleOnly = false;
-        window.__contentListener({type: "BWT_TRANSLATE_PAGE"}, {}, (value) => { startResponse = value; });
+        let initialErrorState = false;
+        let enteredViewportState = false;
+        const floatingButton = document.querySelector(".bwt-floating-button");
+        const initialFloatingButton =
+          floatingButton?.textContent === "译" &&
+          floatingButton.dataset.status === "idle" &&
+          floatingButton.getAttribute("aria-label") === "开始按需翻译";
+        floatingButton?.click();
 
         setTimeout(() => {
           const initialBatches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           initialVisibleOnly =
             document.querySelectorAll(".bwt-translation--pending").length === 4 &&
             !document.querySelector("#below + .bwt-translation") &&
-            initialBatches.length === 3;
+            initialBatches.length === 3 &&
+            floatingButton?.textContent === "…" &&
+            floatingButton.dataset.status === "translating";
         }, 30);
 
         setTimeout(() => {
+          initialErrorState = floatingButton?.textContent === "!" && floatingButton.dataset.status === "error";
           window.__viewportObserver?.trigger(document.querySelector("#below"));
           setTimeout(() => {
+            enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";
             window.__contentListener({type: "BWT_CANCEL_TRANSLATION"}, {}, (value) => { cancelResponse = value; });
           }, 20);
         }, 180);
@@ -84,8 +94,10 @@
           const cancellations = window.__messages.filter((message) => message.type === "BWT_CANCEL_REQUESTS");
           const belowTranslation = document.querySelector("#below + .bwt-translation");
           const passed =
+            initialFloatingButton &&
             initialVisibleOnly &&
-            startResponse?.ok === true &&
+            initialErrorState &&
+            enteredViewportState &&
             cancelResponse?.ok === true &&
             batches.length === 5 &&
             batches.every((message) => message.paragraphs.length === 1) &&
@@ -95,6 +107,9 @@
             translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1 &&
             belowTranslation?.classList.contains("bwt-translation--cancelled") &&
             belowTranslation.textContent === "已取消翻译" &&
+            floatingButton?.textContent === "停" &&
+            floatingButton.dataset.status === "cancelled" &&
+            floatingButton.getAttribute("aria-label") === "翻译已取消，点击重新开始" &&
             document.querySelector("#paragraph").textContent === "Hello world";
           document.body.dataset.test = passed ? "passed" : "failed";
           document.title = `content test ${document.body.dataset.test}`;

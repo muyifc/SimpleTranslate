@@ -6,6 +6,13 @@ let listener;
 let fetchMode = "success";
 let lastSignal;
 const settings = {apiUrl: "https://example.test/v1/chat/completions", model: "test-model", apiKey: "secret"};
+const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+assert.deepEqual(manifest.content_scripts, [{
+  matches: ["http://*/*", "https://*/*"],
+  js: ["content.js"],
+  css: ["content.css"],
+  run_at: "document_idle"
+}]);
 const context = {
   URL,
   Set,

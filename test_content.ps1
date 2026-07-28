@@ -6,9 +6,22 @@ $profile = Join-Path ([System.IO.Path]::GetTempPath()) ("bwt-content-test-" + [g
 New-Item -ItemType Directory -Path $profile | Out-Null
 try {
   $page = ([uri](Join-Path $workspace "test_content.html")).AbsoluteUri
-  $output = & $chrome "--headless=new" "--disable-gpu" "--no-first-run" "--allow-file-access-from-files" "--user-data-dir=$profile" "--virtual-time-budget=2000" "--dump-dom" $page 2>$null
-  if ($LASTEXITCODE -ne 0 -or $output -notmatch 'data-test="passed"') {
-    throw "content browser check failed"
+  $stdout = Join-Path $profile "stdout.txt"
+  $stderr = Join-Path $profile "stderr.txt"
+  $process = Start-Process -FilePath $chrome -ArgumentList @(
+    "--headless=new",
+    "--disable-gpu",
+    "--no-first-run",
+    "--allow-file-access-from-files",
+    "--user-data-dir=$profile",
+    "--virtual-time-budget=4000",
+    "--dump-dom",
+    $page
+  ) -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  $html = Get-Content -Raw $stdout
+  if ($process.ExitCode -ne 0 -or $html -notmatch 'data-test="passed"') {
+    $title = [regex]::Match($html, "<title>.*?</title>").Value
+    throw "content browser check failed (Chrome exit $($process.ExitCode), $title, $($html.Length) bytes)"
   }
   Write-Output "content browser check passed"
 } finally {

@@ -6,12 +6,13 @@ chrome.storage.local.get(fields).then((settings) => {
 });
 
 document.querySelector("#translate").addEventListener("click", () => run("BWT_TRANSLATE_PAGE", true));
+document.querySelector("#cancel").addEventListener("click", () => run("BWT_CANCEL_TRANSLATION"));
 document.querySelector("#hide").addEventListener("click", () => run("BWT_HIDE_TRANSLATIONS"));
 document.querySelector("#show").addEventListener("click", () => run("BWT_SHOW_TRANSLATIONS"));
 
 async function run(type, saveSettings = false) {
   setBusy(true);
-  setStatus(type === "BWT_TRANSLATE_PAGE" ? "正在翻译…" : "正在更新页面…");
+  setStatus(type === "BWT_TRANSLATE_PAGE" ? "正在启动按需翻译…" : type === "BWT_CANCEL_TRANSLATION" ? "正在取消…" : "正在更新页面…");
 
   try {
     if (saveSettings) {

@@ -1,13 +1,35 @@
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+const controllersByTab = new Map();
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const tabId = sender.tab?.id;
+  if (message.type === "BWT_CANCEL_REQUESTS") {
+    const controllers = controllersByTab.get(tabId) || new Set();
+    for (const controller of controllers) controller.abort();
+    controllersByTab.delete(tabId);
+    sendResponse({ok: true, cancelled: controllers.size});
+    return;
+  }
   if (message.type !== "BWT_TRANSLATE_BATCH") return;
 
-  translateBatch(message.paragraphs, message.sourceLanguage, message.targetLanguage)
+  const controller = new AbortController();
+  const controllers = controllersByTab.get(tabId) || new Set();
+  controllers.add(controller);
+  controllersByTab.set(tabId, controllers);
+
+  translateBatch(message.paragraphs, message.sourceLanguage, message.targetLanguage, controller.signal)
     .then((translations) => sendResponse({ok: true, translations}))
-    .catch((error) => sendResponse({ok: false, error: error.message || String(error)}));
+    .catch((error) => sendResponse({
+      ok: false,
+      error: error.name === "AbortError" ? "翻译已取消" : error.message || String(error),
+    }))
+    .finally(() => {
+      controllers.delete(controller);
+      if (!controllers.size && controllersByTab.get(tabId) === controllers) controllersByTab.delete(tabId);
+    });
   return true;
 });
 
-async function translateBatch(paragraphs, sourceLanguage = "auto", targetLanguage = "zh-CN") {
+async function translateBatch(paragraphs, sourceLanguage = "auto", targetLanguage = "zh-CN", signal) {
   if (!Array.isArray(paragraphs) || !paragraphs.length) return [];
 
   const {apiUrl, model, apiKey} = await chrome.storage.local.get(["apiUrl", "model", "apiKey"]);
@@ -22,6 +44,7 @@ async function translateBatch(paragraphs, sourceLanguage = "auto", targetLanguag
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
+    signal,
     body: JSON.stringify({
       model,
       temperature: 0,

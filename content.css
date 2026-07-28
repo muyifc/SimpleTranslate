@@ -21,6 +21,12 @@
   color: #dc2626;
 }
 
+.bwt-translation--cancelled {
+  border-inline-start-color: #94a3b8;
+  color: #64748b;
+  font-style: italic;
+}
+
 li > .bwt-translation,
 td > .bwt-translation,
 th > .bwt-translation {

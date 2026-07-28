@@ -23,15 +23,23 @@
     ".bwt-translation",
   ].join(",");
   const MAX_PARAGRAPH_CHARACTERS = 6000;
-  // ponytail: Three concurrent requests keeps first paint quick without immediately hitting common API limits.
+  // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
   const MAX_CONCURRENT_REQUESTS = 3;
   const records = new WeakMap();
   const recordsById = new Map();
+  const queue = [];
   let nextId = 1;
   let enabled = false;
-  let currentRun = null;
-  let rescanRequested = false;
+  let generation = 0;
+  let activeRequests = 0;
   let debounceTimer;
+
+  const viewportObserver = new IntersectionObserver((entries) => {
+    if (!enabled) return;
+    for (const entry of entries) {
+      if (entry.isIntersecting) enqueue(entry.target);
+    }
+  }, {threshold: 0.01});
 
   function paragraphText(element) {
     const parts = [];
@@ -61,14 +69,14 @@
     let record = records.get(element);
     if (record) return record;
 
-    record = { id: `p-${nextId++}`, element, node: null, status: "idle", text: "" };
+    record = {id: `p-${nextId++}`, element, node: null, status: "idle", text: ""};
     records.set(element, record);
     recordsById.set(record.id, record);
     return record;
   }
 
   function setTranslation(record, text, status) {
-    if (!record.element.isConnected) return false;
+    if (!record?.element.isConnected) return false;
 
     let translation = record.node;
     if (!translation?.isConnected) {
@@ -81,43 +89,49 @@
       record.node = translation;
     }
 
-    translation.className = `bwt-translation bwt-translation--${status}`;
+    const style = status === "queued" ? "pending" : status;
+    translation.className = `bwt-translation bwt-translation--${style}`;
     translation.textContent = text;
     record.status = status;
     return true;
   }
 
-  function scan() {
+  function discoverCandidates() {
     const roots = [...document.querySelectorAll('article,main,[role="main"]')];
     if (!roots.length && document.body) roots.push(document.body);
 
     const seen = new Set();
-    const pending = [];
     for (const root of roots) {
       for (const element of root.querySelectorAll(CANDIDATE_SELECTOR)) {
         if (seen.has(element) || element.closest(EXCLUDED_SELECTOR)) continue;
         if (element.matches("div") && element.querySelector(`${CANDIDATE_SELECTOR},button`)) continue;
         seen.add(element);
-
-        const text = paragraphText(element);
-        if (!isTranslatable(text)) continue;
-
-        const record = getRecord(element);
-        if (
-          record.text === text &&
-          (record.status === "pending" || (record.status === "done" && record.node?.isConnected))
-        ) {
-          continue;
-        }
-
-        record.node?.remove();
-        record.node = null;
-        record.text = text;
-        setTranslation(record, "即将翻译…", "pending");
-        pending.push({ id: record.id, text });
+        getRecord(element);
+        viewportObserver.observe(element);
       }
     }
-    return pending;
+  }
+
+  function enqueue(element) {
+    if (!enabled || !element.isConnected) return;
+
+    const record = getRecord(element);
+    const text = paragraphText(element);
+    if (!isTranslatable(text)) return;
+    if (
+      record.text === text &&
+      record.node?.isConnected &&
+      ["queued", "pending", "done"].includes(record.status)
+    ) {
+      return;
+    }
+
+    record.node?.remove();
+    record.node = null;
+    record.text = text;
+    setTranslation(record, "即将翻译…", "queued");
+    queue.push({record, text, generation});
+    pumpQueue();
   }
 
   function sendMessage(message) {
@@ -130,83 +144,75 @@
     });
   }
 
-  function render(record, text) {
-    return record.status === "pending" && typeof text === "string" && setTranslation(record, text, "done");
-  }
-
-  async function translateParagraph(paragraph) {
-    const record = recordsById.get(paragraph.id);
+  async function translate(job) {
+    const {record, text, generation: jobGeneration} = job;
     setTranslation(record, "正在翻译…", "pending");
-    const response = await sendMessage({ type: "BWT_TRANSLATE_BATCH", paragraphs: [paragraph] });
-    if (!response || response.ok === false || !Array.isArray(response.translations)) {
-      throw new Error(response?.error || "翻译服务返回了无效结果");
-    }
 
-    const [translation] = response.translations;
-    if (response.translations.length !== 1 || translation?.id !== paragraph.id || !render(record, translation.text)) {
-      throw new Error("翻译服务返回了无效结果");
-    }
-  }
-
-  async function translateParagraphs(paragraphs) {
-    let next = 0;
-    const errors = [];
-
-    async function worker() {
-      while (enabled && next < paragraphs.length) {
-        const paragraph = paragraphs[next++];
-        const record = recordsById.get(paragraph.id);
-        try {
-          await translateParagraph(paragraph);
-        } catch (error) {
-          setTranslation(record, "翻译失败，点击扩展重试", "error");
-          errors.push(error);
-        }
+    try {
+      const response = await sendMessage({
+        type: "BWT_TRANSLATE_BATCH",
+        paragraphs: [{id: record.id, text}],
+      });
+      if (jobGeneration !== generation || record.status !== "pending" || record.text !== text) return;
+      const [translation] = response?.translations || [];
+      if (response?.ok === false) throw new Error(response.error || "翻译失败");
+      if (response?.translations?.length !== 1 || translation?.id !== record.id || typeof translation.text !== "string") {
+        throw new Error("翻译服务返回了无效结果");
       }
-    }
-
-    await Promise.all(Array.from({length: Math.min(MAX_CONCURRENT_REQUESTS, paragraphs.length)}, worker));
-    if (errors.length) throw new Error(`${errors.length} 个段落翻译失败：${errors[0].message}`);
-  }
-
-  async function runTranslation() {
-    if (currentRun) {
-      rescanRequested = true;
-      return currentRun;
-    }
-
-    currentRun = (async () => {
-      try {
-        do {
-          rescanRequested = false;
-          const paragraphs = scan();
-          await translateParagraphs(paragraphs);
-        } while (enabled && rescanRequested);
-      } catch (error) {
-        for (const record of recordsById.values()) {
-          if (record.status === "pending") setTranslation(record, "翻译失败，点击扩展重试", "error");
-        }
-        throw error;
-      }
-    })().finally(() => {
-      currentRun = null;
-    });
-
-    return currentRun;
-  }
-
-  function setOriginalOnly(originalOnly) {
-    document.documentElement.classList.toggle("bwt-show-original", originalOnly);
-    enabled = !originalOnly;
-    if (originalOnly) {
-      for (const record of recordsById.values()) {
-        if (record.status === "pending") record.status = "idle";
+      setTranslation(record, translation.text, "done");
+    } catch (error) {
+      if (jobGeneration === generation && enabled && record.status === "pending" && record.text === text) {
+        setTranslation(record, "翻译失败，点击扩展重试", "error");
       }
     }
   }
 
-  function removeTranslations() {
+  function pumpQueue() {
+    while (enabled && activeRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
+      const job = queue.shift();
+      if (job.generation !== generation || job.record.status !== "queued") continue;
+      activeRequests += 1;
+      translate(job).finally(() => {
+        activeRequests -= 1;
+        pumpQueue();
+      });
+    }
+  }
+
+  function startTranslation() {
+    enabled = true;
+    viewportObserver.disconnect();
+    document.documentElement.classList.remove("bwt-show-original");
+    discoverCandidates();
+  }
+
+  async function cancelTranslation() {
     enabled = false;
+    generation += 1;
+    queue.length = 0;
+    viewportObserver.disconnect();
+    for (const record of recordsById.values()) {
+      if (["queued", "pending"].includes(record.status)) {
+        setTranslation(record, "已取消翻译", "cancelled");
+      }
+    }
+    const response = await sendMessage({type: "BWT_CANCEL_REQUESTS"}).catch(() => ({ok: true, cancelled: 0}));
+    return response;
+  }
+
+  function resetRecord(element) {
+    const record = records.get(element);
+    if (!record) return;
+    record.node?.remove();
+    record.node = null;
+    record.status = "idle";
+    record.text = "";
+    viewportObserver.unobserve?.(element);
+    viewportObserver.observe(element);
+  }
+
+  async function removeTranslations() {
+    await cancelTranslation();
     document.documentElement.classList.remove("bwt-show-original");
     document.querySelectorAll(".bwt-translation").forEach((node) => node.remove());
     for (const record of recordsById.values()) {
@@ -218,40 +224,52 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message?.type?.startsWith("BWT_")) return;
 
-    let action;
-    if (["BWT_TRANSLATE", "BWT_TRANSLATE_PAGE", "BWT_SHOW_TRANSLATIONS"].includes(message.type)) {
-      setOriginalOnly(false);
-      action = runTranslation();
+    if (["BWT_TRANSLATE", "BWT_TRANSLATE_PAGE"].includes(message.type)) {
+      startTranslation();
+      sendResponse({ok: true, message: "已开始按可视区域翻译"});
+    } else if (message.type === "BWT_CANCEL_TRANSLATION") {
+      cancelTranslation()
+        .then((result) => sendResponse({ok: true, message: `已取消翻译（中止 ${result.cancelled || 0} 个请求）`}))
+        .catch((error) => sendResponse({ok: false, error: error.message}));
+      return true;
     } else if (message.type === "BWT_SHOW_ORIGINAL" || message.type === "BWT_HIDE_TRANSLATIONS") {
-      setOriginalOnly(true);
-      action = Promise.resolve();
+      document.documentElement.classList.add("bwt-show-original");
+      sendResponse({ok: true, message: "已恢复原文"});
+    } else if (message.type === "BWT_SHOW_TRANSLATIONS") {
+      document.documentElement.classList.remove("bwt-show-original");
+      sendResponse({ok: true, message: "已显示现有译文"});
     } else if (message.type === "BWT_REMOVE_TRANSLATIONS") {
-      removeTranslations();
-      action = Promise.resolve();
+      removeTranslations()
+        .then(() => sendResponse({ok: true}))
+        .catch((error) => sendResponse({ok: false, error: error.message}));
+      return true;
     } else {
       return;
     }
-
-    action.then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: error.message }));
-    return true;
   });
 
   new MutationObserver((mutations) => {
     if (!enabled) return;
-    const changed = mutations.some((mutation) => {
+    const changed = new Set();
+    let added = false;
+
+    for (const mutation of mutations) {
       if (mutation.type === "characterData") {
-        return !mutation.target.parentElement?.closest(EXCLUDED_SELECTOR);
-      }
-      return [...mutation.addedNodes].some((node) => {
+        const element = mutation.target.parentElement?.closest(CANDIDATE_SELECTOR);
+        if (element && !element.closest(EXCLUDED_SELECTOR)) changed.add(element);
+      } else if ([...mutation.addedNodes].some((node) => {
         if (node.nodeType === Node.TEXT_NODE) return !node.parentElement?.closest(EXCLUDED_SELECTOR);
         return node.nodeType === Node.ELEMENT_NODE && !node.closest(".bwt-translation");
-      });
-    });
-    if (!changed) return;
+      })) {
+        added = true;
+      }
+    }
+    if (!added && !changed.size) return;
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      runTranslation().catch(() => {});
+      for (const element of changed) resetRecord(element);
+      discoverCandidates();
     }, 250);
-  }).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
+  }).observe(document.documentElement, {childList: true, characterData: true, subtree: true});
 })();

@@ -63,7 +63,11 @@
         let waitingForViewport = false;
         let initialErrorState = false;
         let enteredViewportState = false;
+        let contextMenuState = false;
+        let restoreOriginalState = false;
+        let showTranslationsState = false;
         const floatingButton = document.querySelector(".bwt-floating-button");
+        const floatingMenu = document.querySelector(".bwt-floating-menu");
         const floatingStyle = floatingButton && getComputedStyle(floatingButton);
         const initialFloatingButton =
           floatingButton?.textContent === "译" &&
@@ -95,10 +99,28 @@
 
         setTimeout(() => {
           initialErrorState = floatingButton?.textContent === "!" && floatingButton.dataset.status === "error";
+          floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+          const menuStyle = floatingMenu && getComputedStyle(floatingMenu);
+          const menuItems = [...(floatingMenu?.querySelectorAll('[role="menuitem"]') || [])];
+          contextMenuState =
+            floatingMenu?.hidden === false &&
+            menuStyle.position === "fixed" &&
+            menuStyle.right === "82px" &&
+            menuItems.map((item) => item.textContent).join("|") === "取消翻译|恢复原文|显示译文";
+          menuItems[1]?.click();
+          restoreOriginalState =
+            document.documentElement.classList.contains("bwt-show-original") &&
+            floatingMenu?.hidden === true;
+          floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+          menuItems[2]?.click();
+          showTranslationsState =
+            !document.documentElement.classList.contains("bwt-show-original") &&
+            floatingMenu?.hidden === true;
           window.__viewportObserver?.trigger(document.querySelector("#below"));
           setTimeout(() => {
             enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";
-            floatingButton?.click();
+            floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+            floatingMenu?.querySelector('[data-action="cancel"]')?.click();
           }, 20);
         }, 270);
 
@@ -113,6 +135,9 @@
             initialVisibleOnly &&
             initialErrorState &&
             enteredViewportState &&
+            contextMenuState &&
+            restoreOriginalState &&
+            showTranslationsState &&
             batches.length === 5 &&
             batches.every((message) => message.paragraphs.length === 1) &&
             cancellations.length === 1 &&

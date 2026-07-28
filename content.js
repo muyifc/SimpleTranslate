@@ -1,7 +1,6 @@
 (() => {
-  const READY_ATTRIBUTE = "data-bwt-content-ready";
-  if (document.documentElement.hasAttribute(READY_ATTRIBUTE)) return;
-  document.documentElement.setAttribute(READY_ATTRIBUTE, "");
+  if (globalThis.__bwtContentReady) return;
+  globalThis.__bwtContentReady = true;
 
   const CANDIDATE_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,td,th,div";
   const EXCLUDED_SELECTOR = [
@@ -21,6 +20,7 @@
     "header",
     "footer",
     ".bwt-translation",
+    "[data-bwt-control]",
   ].join(",");
   const MAX_PARAGRAPH_CHARACTERS = 6000;
   // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
@@ -32,13 +32,16 @@
   let enabled = false;
   let generation = 0;
   let activeRequests = 0;
+  let hasErrors = false;
   let debounceTimer;
+  let floatingButton;
 
   const viewportObserver = new IntersectionObserver((entries) => {
     if (!enabled) return;
     for (const entry of entries) {
       if (entry.isIntersecting) enqueue(entry.target);
     }
+    refreshFloatingStatus();
   }, {threshold: 0.01});
 
   function paragraphText(element) {
@@ -96,6 +99,37 @@
     return true;
   }
 
+  function setFloatingStatus(status) {
+    const states = {
+      idle: ["译", "开始按需翻译"],
+      translating: ["…", "正在翻译当前可见内容"],
+      ready: ["✓", "当前可见内容已翻译，滚动后继续"],
+      error: ["!", "部分内容翻译失败，点击重试"],
+      cancelled: ["停", "翻译已取消，点击重新开始"],
+    };
+    const [text, label] = states[status];
+    floatingButton.dataset.status = status;
+    floatingButton.textContent = text;
+    floatingButton.title = label;
+    floatingButton.setAttribute("aria-label", label);
+  }
+
+  function refreshFloatingStatus() {
+    if (!enabled) return;
+    setFloatingStatus(activeRequests || queue.length ? "translating" : hasErrors ? "error" : "ready");
+  }
+
+  function createFloatingButton() {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "bwt-floating-button";
+    button.dataset.bwtControl = "";
+    floatingButton = button;
+    setFloatingStatus("idle");
+    button.addEventListener("click", startTranslation);
+    (document.body || document.documentElement).append(button);
+  }
+
   function discoverCandidates() {
     const roots = [...document.querySelectorAll('article,main,[role="main"]')];
     if (!roots.length && document.body) roots.push(document.body);
@@ -110,6 +144,7 @@
         viewportObserver.observe(element);
       }
     }
+    return seen.size;
   }
 
   function enqueue(element) {
@@ -131,6 +166,7 @@
     record.text = text;
     setTranslation(record, "即将翻译…", "queued");
     queue.push({record, text, generation});
+    setFloatingStatus("translating");
     pumpQueue();
   }
 
@@ -162,6 +198,7 @@
       setTranslation(record, translation.text, "done");
     } catch (error) {
       if (jobGeneration === generation && enabled && record.status === "pending" && record.text === text) {
+        hasErrors = true;
         setTranslation(record, "翻译失败，点击扩展重试", "error");
       }
     }
@@ -175,15 +212,18 @@
       translate(job).finally(() => {
         activeRequests -= 1;
         pumpQueue();
+        refreshFloatingStatus();
       });
     }
   }
 
   function startTranslation() {
     enabled = true;
+    hasErrors = false;
     viewportObserver.disconnect();
     document.documentElement.classList.remove("bwt-show-original");
-    discoverCandidates();
+    setFloatingStatus("translating");
+    if (!discoverCandidates()) refreshFloatingStatus();
   }
 
   async function cancelTranslation() {
@@ -196,6 +236,7 @@
         setTranslation(record, "已取消翻译", "cancelled");
       }
     }
+    setFloatingStatus("cancelled");
     const response = await sendMessage({type: "BWT_CANCEL_REQUESTS"}).catch(() => ({ok: true, cancelled: 0}));
     return response;
   }
@@ -220,6 +261,8 @@
       record.status = "idle";
     }
   }
+
+  createFloatingButton();
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message?.type?.startsWith("BWT_")) return;

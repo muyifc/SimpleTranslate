@@ -36,3 +36,50 @@ th > .bwt-translation {
 html.bwt-show-original .bwt-translation {
   display: none !important;
 }
+
+.bwt-floating-button {
+  all: initial;
+  position: fixed !important;
+  top: 50% !important;
+  right: 18px !important;
+  z-index: 2147483647 !important;
+  display: grid !important;
+  width: 52px !important;
+  height: 52px !important;
+  box-sizing: border-box !important;
+  place-items: center !important;
+  transform: translateY(-50%) !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: #2563eb !important;
+  box-shadow: 0 6px 18px #0005 !important;
+  color: white !important;
+  cursor: pointer !important;
+  font: 700 18px/1 system-ui, sans-serif !important;
+  user-select: none !important;
+}
+
+.bwt-floating-button:hover {
+  filter: brightness(1.08) !important;
+}
+
+.bwt-floating-button:focus-visible {
+  outline: 3px solid white !important;
+  outline-offset: 3px !important;
+}
+
+.bwt-floating-button[data-status="translating"] {
+  background: #d97706 !important;
+}
+
+.bwt-floating-button[data-status="ready"] {
+  background: #16a34a !important;
+}
+
+.bwt-floating-button[data-status="error"] {
+  background: #dc2626 !important;
+}
+
+.bwt-floating-button[data-status="cancelled"] {
+  background: #64748b !important;
+}

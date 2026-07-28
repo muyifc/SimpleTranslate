@@ -28,13 +28,20 @@ async function run(type, saveSettings = false) {
     const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
     if (!tab?.id || !/^https?:/.test(tab.url || "")) throw new Error("当前页面不支持注入扩展脚本");
 
-    await chrome.scripting.insertCSS({target: {tabId: tab.id}, files: ["content.css"]});
-    await chrome.scripting.executeScript({target: {tabId: tab.id}, files: ["content.js"]});
-    const result = await chrome.tabs.sendMessage(tab.id, {type});
+    let result;
+    try {
+      result = await chrome.tabs.sendMessage(tab.id, {type});
+    } catch (error) {
+      if (!error.message?.includes("Receiving end does not exist")) throw error;
+      await chrome.scripting.insertCSS({target: {tabId: tab.id}, files: ["content.css"]});
+      await chrome.scripting.executeScript({target: {tabId: tab.id}, files: ["content.js"]});
+      result = await chrome.tabs.sendMessage(tab.id, {type});
+    }
     if (result?.ok === false) throw new Error(result.error || "操作失败");
     setStatus(result?.message || "完成");
   } catch (error) {
-    setStatus(error.message || String(error), true);
+    const message = error.message || String(error);
+    setStatus(message.includes("Receiving end does not exist") ? "请刷新网页后重试" : message, true);
   } finally {
     setBusy(false);
   }

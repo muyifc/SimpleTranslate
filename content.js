@@ -627,9 +627,11 @@
 
   function detectEnglish(text) {
     if (!isTranslatable(text) || text.length > MAX_QUICK_CHARACTERS || hasCjk(text)) return Promise.resolve(false);
+    const shortAsciiText = text.length <= 80 && /^[\x00-\x7f]*[A-Za-z][\x00-\x7f]*$/u.test(text);
     return new Promise((resolve) => chrome.i18n.detectLanguage(text, (result) => {
       const primary = result?.languages?.[0];
-      resolve(Boolean(primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80)));
+      const detectedEnglish = primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80);
+      resolve(Boolean(detectedEnglish || (!result?.isReliable && shortAsciiText)));
     }));
   }
 

@@ -65,16 +65,18 @@
       <article>
         <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
         <div id="standalone" data-visible="true">Translation review:<br>1. Clarity and fluidity<br>2. Terminology accuracy</div>
-        <div id="failure" data-visible="true">Failure paragraph</div>
         <div><p id="nested" data-visible="true">Nested paragraph</p></div>
         <p id="batch-a" data-visible="true">First batched paragraph</p>
         <p id="batch-b" data-visible="true">Second batched paragraph</p>
         <p id="batch-c" data-visible="true">Third batched paragraph</p>
+        <div id="failure" data-visible="true">Failure paragraph</div>
         <p id="chinese" data-visible="true">这是一段中文正文，不应该发送给翻译服务。</p>
         <p id="french" data-visible="true">Bonjour le monde, ceci est un paragraphe français.</p>
         <div id="controls"><button type="button">Do not translate controls</button></div>
         <aside><p id="sidebar" data-visible="true">Related English sidebar content</p></aside>
         <div id="below">Slow below viewport</div>
+        <p id="below-2">Slow second below viewport</p>
+        <p id="below-3">Slow third below viewport</p>
       </article>
       <p id="main-edge" data-visible="true">English content outside the article body</p>
       <article><p id="related-article" data-visible="true">Unrelated English article card</p></article>
@@ -117,12 +119,12 @@
         setTimeout(() => {
           const initialBatches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           initialVisibleOnly =
-            document.querySelectorAll(".bwt-translation--pending").length === 4 &&
+            document.querySelectorAll(".bwt-translation--pending").length === 7 &&
             !document.querySelector("#below + .bwt-translation") &&
-            initialBatches.length <= 5 &&
+            initialBatches.length === 3 &&
             floatingButton?.textContent === "…" &&
             floatingButton.dataset.status === "translating";
-        }, 110);
+        }, 130);
 
         setTimeout(() => {
           initialErrorState = floatingButton?.textContent === "!" && floatingButton.dataset.status === "error";
@@ -143,29 +145,29 @@
           showTranslationsState =
             !document.documentElement.classList.contains("bwt-show-original") &&
             !floatingMenu?.matches(":popover-open");
-          window.__viewportObserver?.trigger(document.querySelector("#below"));
+          for (const id of ["#below", "#below-2", "#below-3"]) window.__viewportObserver?.trigger(document.querySelector(id));
           setTimeout(() => {
             enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";
             floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
             floatingMenu?.querySelector('[data-action="cancel"]')?.click();
             cancelledBeforeRestart =
-              document.querySelector("#below + .bwt-translation")?.classList.contains("bwt-translation--cancelled") &&
+              ["#below", "#below-2", "#below-3"].every((id) => document.querySelector(`${id} + .bwt-translation`)?.classList.contains("bwt-translation--cancelled")) &&
               floatingButton?.dataset.status === "cancelled";
             floatingButton?.click();
-            window.__viewportObserver?.trigger(document.querySelector("#below"));
+            for (const id of ["#below", "#below-2", "#below-3"]) window.__viewportObserver?.trigger(document.querySelector(id));
             setTimeout(() => {
               immediateRestartState =
-                window.__messages.filter((message) => message.paragraphs?.some(({text}) => text === "Slow below viewport")).length === 2 &&
+                window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Slow"))).length === 2 &&
                 floatingButton?.dataset.status === "translating";
-            }, 40);
-          }, 20);
+            }, 70);
+          }, 50);
         }, 270);
 
         setTimeout(() => {
           const translations = [...document.querySelectorAll(".bwt-translation")];
           const batches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           const cancellations = window.__messages.filter((message) => message.type === "BWT_CANCEL_REQUESTS");
-          const belowTranslation = document.querySelector("#below + .bwt-translation");
+          const belowTranslations = ["#below", "#below-2", "#below-3"].map((id) => document.querySelector(`${id} + .bwt-translation`));
           const sentParagraphs = batches.flatMap((message) => message.paragraphs);
           const sentTexts = sentParagraphs.map(({text}) => text);
           const batchingWorked = batches.some((message) => message.paragraphs.length === 3) &&
@@ -184,34 +186,34 @@
             !window.__detectedTexts.some((text) => text.includes("中文")) &&
             window.__detectedTexts.some((text) => text.startsWith("Bonjour")) &&
             !window.__detectedTexts.some((text) => text.includes("sidebar") || text.includes("outside the article") || text.includes("article card"));
-          const passed =
-            initialFloatingButton &&
-            waitingForViewport &&
-            initialVisibleOnly &&
-            initialErrorState &&
-            enteredViewportState &&
-            contextMenuState &&
-            restoreOriginalState &&
-            showTranslationsState &&
-            onlyEnglishMainContent &&
-            cancelledBeforeRestart &&
-            immediateRestartState &&
-            formattedListState &&
-            batchingWorked &&
-            sentParagraphs.length === 9 &&
-            batches.every((message) => message.sourceLanguage === "en") &&
-            cancellations.length === 1 &&
-            window.__maxActiveRequests <= 3 &&
-            translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 7 &&
-            translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1 &&
-            belowTranslation?.classList.contains("bwt-translation--done") &&
-            belowTranslation.textContent === "译文：Slow below viewport" &&
-            floatingButton?.textContent === "!" &&
-            floatingButton.dataset.status === "error" &&
-            floatingButton.getAttribute("aria-label") === "部分内容翻译失败，点击停止" &&
-            document.querySelector("#paragraph").textContent === "Hello world";
+          const checks = {
+            initialFloatingButton,
+            waitingForViewport,
+            initialVisibleOnly,
+            initialErrorState,
+            enteredViewportState,
+            contextMenuState,
+            restoreOriginalState,
+            showTranslationsState,
+            onlyEnglishMainContent,
+            cancelledBeforeRestart,
+            immediateRestartState,
+            formattedListState,
+            batchingWorked,
+            paragraphCount: sentParagraphs.length === 14,
+            languages: batches.every((message) => message.sourceLanguage === "en"),
+            cancellationCount: cancellations.length === 1,
+            concurrency: window.__maxActiveRequests <= 3,
+            doneCount: translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 9,
+            errorCount: translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1,
+            belowDone: belowTranslations.every((node) => node?.classList.contains("bwt-translation--done")),
+            belowText: belowTranslations[0].textContent === "译文：Slow below viewport",
+            errorStatus: floatingButton?.textContent === "!" && floatingButton.dataset.status === "error" && floatingButton.getAttribute("aria-label") === "部分内容翻译失败，点击停止",
+            originalText: document.querySelector("#paragraph").textContent === "Hello world",
+          };
+          const passed = Object.values(checks).every(Boolean);
           document.body.dataset.test = passed ? "passed" : "failed";
-          document.title = `content test ${document.body.dataset.test}`;
+          document.title = passed ? "content test passed" : `content test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}; paragraphs=${sentParagraphs.length}; concurrency=${window.__maxActiveRequests}; batches=${batches.map(({paragraphs}) => `${paragraphs.length}:${paragraphs.map(({text}) => text.slice(0, 4)).join("+")}`).join("|")}`;
         }, 800);
       });
     </script>

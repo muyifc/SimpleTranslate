@@ -41,6 +41,9 @@
   const MAX_QUICK_CHARACTERS = 1200;
   // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
   const MAX_CONCURRENT_REQUESTS = 3;
+  const MAX_BATCH_PARAGRAPHS = 3;
+  // ponytail: A fixed 20ms window coalesces one viewport burst; make it adaptive only if measurements justify it.
+  const BATCH_DELAY_MS = 20;
   const records = new WeakMap();
   const recordsById = new Map();
   const queue = [];
@@ -56,6 +59,7 @@
   let activeDetections = 0;
   let hasErrors = false;
   let debounceTimer;
+  let pumpTimer;
   let floatingButton;
   let floatingMenu;
   let siteRule = null;
@@ -396,7 +400,7 @@
       setTranslation(record, "即将翻译…", "queued");
       queue.push({record, text, generation});
       setFloatingStatus("translating");
-      pumpQueue();
+      schedulePumpQueue();
     };
     try {
       chrome.i18n.detectLanguage(text, onDetected);
@@ -442,9 +446,8 @@
     }
   }
 
-  async function translate(job) {
-    const {record, text, generation: jobGeneration} = job;
-    setTranslation(record, "正在翻译…", "pending");
+  async function translate(jobs) {
+    for (const {record} of jobs) setTranslation(record, "正在翻译…", "pending");
 
     try {
       const response = await sendMessage({
@@ -453,34 +456,70 @@
         sourceLanguage: "en",
         targetLanguage: "zh-CN",
         context: requestContext(),
-        paragraphs: [{id: record.id, text}],
+        paragraphs: jobs.map(({record, text}) => ({id: record.id, text})),
       });
-      if (jobGeneration !== generation || record.status !== "pending" || record.text !== text) return;
-      const [translation] = response?.translations || [];
       if (response?.ok === false) throw new Error(response.error || "翻译失败");
-      if (response?.translations?.length !== 1 || translation?.id !== record.id || typeof translation.text !== "string") {
+      const expected = new Set(jobs.map(({record}) => record.id));
+      const translations = response?.translations;
+      const byId = new Map();
+      if (!Array.isArray(translations) || translations.length !== expected.size || translations.some(({id, text}) => {
+        if (!expected.has(id) || byId.has(id) || typeof text !== "string") return true;
+        byId.set(id, text);
+        return false;
+      })) {
         throw new Error("翻译服务返回了无效结果");
       }
-      record.translation = formatTranslation(text, translation.text);
-      setTranslation(record, record.translation, "done");
-      rememberContext(text, record.translation);
+
+      for (const {record, text, generation: jobGeneration} of jobs) {
+        if (jobGeneration !== generation || record.status !== "pending" || record.text !== text) continue;
+        record.translation = formatTranslation(text, byId.get(record.id));
+        setTranslation(record, record.translation, "done");
+        rememberContext(text, record.translation);
+      }
     } catch (error) {
       if (handleExtensionError(error)) return;
-      if (jobGeneration === generation && enabled && record.status === "pending" && record.text === text) {
-        hasErrors = true;
-        setTranslation(record, "翻译失败，请右键悬浮球重试", "error");
-        refreshMenuState();
+      const currentJobs = jobs.filter(({record, text, generation: jobGeneration}) =>
+        jobGeneration === generation && enabled && record.status === "pending" && record.text === text
+      );
+      if (jobs.length > 1 && currentJobs.length) {
+        for (const job of [...currentJobs].reverse()) {
+          setTranslation(job.record, "即将翻译…", "queued");
+          queue.unshift({...job, single: true});
+        }
+        return;
       }
+      if (!currentJobs.length) return;
+      hasErrors = true;
+      for (const {record} of currentJobs) setTranslation(record, "翻译失败，请右键悬浮球重试", "error");
+      refreshMenuState();
     }
+  }
+
+  function schedulePumpQueue() {
+    if (pumpTimer) return;
+    pumpTimer = setTimeout(() => {
+      pumpTimer = null;
+      pumpQueue();
+    }, BATCH_DELAY_MS);
   }
 
   function pumpQueue() {
     while (enabled && activeRequests + activeQuickRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
-      const job = queue.shift();
-      if (job.generation !== generation || job.record.status !== "queued") continue;
+      const jobs = [];
+      while (queue.length && jobs.length < MAX_BATCH_PARAGRAPHS) {
+        const job = queue.shift();
+        if (job.generation !== generation || job.record.status !== "queued") continue;
+        if (jobs.length && (jobs[0].single || job.single)) {
+          queue.unshift(job);
+          break;
+        }
+        jobs.push(job);
+        if (job.single) break;
+      }
+      if (!jobs.length) continue;
       activeRequests += 1;
-      translate(job).finally(() => {
-        if (job.generation === generation) activeRequests -= 1;
+      translate(jobs).finally(() => {
+        if (jobs[0].generation === generation) activeRequests -= 1;
         pumpQuickQueue();
         pumpQueue();
         refreshFloatingStatus();

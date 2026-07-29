@@ -39,13 +39,16 @@
           sendMessage(message, callback) {
             window.__messages.push(message);
             if (message.type === "BWT_CANCEL_REQUESTS") return callback({ok: true, cancelled: 0});
-            const paragraph = message.paragraphs[0];
+            const paragraphs = message.paragraphs;
             setTimeout(() => {
-              if (paragraph.text.includes("Retry") && window.__failOnce) {
+              const hasRetry = paragraphs.some(({text}) => text.includes("Retry"));
+              if (paragraphs.length > 1 && hasRetry) {
+                callback({ok: false, error: "mock batch failure"});
+              } else if (hasRetry && window.__failOnce) {
                 window.__failOnce = false;
                 callback({ok: false, error: "mock failure"});
               } else {
-                callback({ok: true, translations: [{id: paragraph.id, text: `译文：${paragraph.text}`}]});
+                callback({ok: true, translations: paragraphs.map(({id, text}) => ({id, text: `译文：${text}`}))});
               }
             }, 20);
           }
@@ -74,21 +77,21 @@
         ball.click();
         await wait(100);
 
-        const initialTexts = window.__messages.filter(({type}) => type === "BWT_TRANSLATE_BATCH").map(({paragraphs}) => paragraphs[0].text);
+        const initialTexts = window.__messages.filter(({type}) => type === "BWT_TRANSLATE_BATCH").flatMap(({paragraphs}) => paragraphs.map(({text}) => text));
         const savedRootWorked = initialTexts.includes("First contextual paragraph") && !initialTexts.includes("Ignored main text");
         const contextWorked = window.__messages.some((message) => message.context?.pageTitle === "feature test pending");
 
         openMenu();
         document.querySelector('[data-action="retry"]')?.click();
         await wait(80);
-        const retryWorked = window.__messages.filter((message) => message.paragraphs?.[0]?.text === "Retry this paragraph").length === 2 &&
+        const retryWorked = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text === "Retry this paragraph")).length === 3 &&
           document.querySelector("#retry + .bwt-translation")?.classList.contains("bwt-translation--done");
 
         openMenu();
         document.querySelector('[data-action="clear-region"]')?.click();
         await wait(100);
         const clearRuleWorked = !window.__stored.siteRules?.[""]?.selector &&
-          window.__messages.some((message) => message.paragraphs?.[0]?.text === "Ignored main text");
+          window.__messages.some((message) => message.paragraphs?.some(({text}) => text === "Ignored main text"));
 
         openMenu();
         document.querySelector('[data-action="select-region"]')?.click();
@@ -98,7 +101,7 @@
         await wait(100);
         const selectedRule = window.__stored.siteRules?.[""]?.selector;
         const regionWorked = selectedRule && document.querySelector(selectedRule) === document.querySelector("#new-root") &&
-          window.__messages.some((message) => message.paragraphs?.[0]?.text === "New selected paragraph");
+          window.__messages.some((message) => message.paragraphs?.some(({text}) => text === "New selected paragraph"));
 
         const range = document.createRange();
         range.selectNodeContents(document.querySelector("#selection"));
@@ -134,13 +137,13 @@
         document.querySelector(".bwt-selection-action")?.click();
         document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
         await wait(80);
-        const quickCancelWorked = !window.__messages.some((message) => message.paragraphs?.[0]?.text === "Delayed selected words");
+        const quickCancelWorked = !window.__messages.some((message) => message.paragraphs?.some(({text}) => text === "Delayed selected words"));
 
         history.pushState({}, "", "#new-page");
         document.querySelector("#hover").dispatchEvent(new MouseEvent("mouseover", {bubbles: true, altKey: true}));
         await wait(550);
-        const hoverMessage = window.__messages.find((message) => message.paragraphs?.[0]?.text === "Hover English words");
-        const hoverWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Hover English words" && hoverMessage?.context?.previousText === "";
+        const hoverMessage = window.__messages.find((message) => message.paragraphs?.some(({text}) => text === "Hover English words"));
+        const hoverWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Hover English words" && hoverMessage?.paragraphs.length === 1 && hoverMessage.context?.previousText === "";
 
         document.querySelector("#hover").dispatchEvent(new MouseEvent("mouseout", {bubbles: true, relatedTarget: document.body}));
         document.body.dispatchEvent(new MouseEvent("mouseout", {bubbles: true}));

@@ -15,7 +15,12 @@
         disconnect() { this.targets.clear(); }
       };
       window.chrome = {
-        i18n: {detectLanguage(text, callback) { setTimeout(() => callback({isReliable: true, languages: [{language: "en", percentage: 100}]}), text.includes("Delayed") ? 50 : 0); }},
+        i18n: {detectLanguage(text, callback) {
+          const result = text === "when"
+            ? {isReliable: false, languages: [{language: "cy", percentage: 55}]}
+            : {isReliable: true, languages: [{language: "en", percentage: 100}]};
+          setTimeout(() => callback(result), text.includes("Delayed") ? 50 : 0);
+        }},
         storage: {local: {
           async get(keys) {
             if (typeof keys === "string") return {[keys]: window.__stored[keys]};
@@ -52,6 +57,7 @@
     </article>
     <section id="new-root"><p id="new-paragraph" data-visible="true">New selected paragraph</p></section>
     <p id="selection">Selected English words</p>
+    <p id="short-selection">when</p>
     <p id="delayed-selection">Delayed selected words</p>
     <p id="hover">Hover English words</p>
     <script src="content.js"></script>
@@ -100,6 +106,16 @@
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
 
+        const shortRange = document.createRange();
+        shortRange.selectNodeContents(document.querySelector("#short-selection"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(shortRange);
+        document.querySelector("#short-selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(10);
+        document.querySelector(".bwt-selection-action")?.click();
+        await wait(60);
+        const shortSelectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：when";
+
         const delayedRange = document.createRange();
         delayedRange.selectNodeContents(document.querySelector("#delayed-selection"));
         getSelection().removeAllRanges();
@@ -122,7 +138,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && quickCancelWorked && hoverWorked && disableWorked ? "passed" : "failed";
+        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && shortSelectionWorked && quickCancelWorked && hoverWorked && disableWorked ? "passed" : "failed";
         document.title = `feature test ${document.body.dataset.test}`;
       })().catch((error) => {
         document.body.dataset.test = "failed";

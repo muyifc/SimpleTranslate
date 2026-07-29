@@ -6,6 +6,9 @@
     <link rel="stylesheet" href="content.css">
     <script>
       window.__messages = [];
+      window.__errors = [];
+      window.addEventListener("error", (event) => window.__errors.push(event.message));
+      window.addEventListener("unhandledrejection", (event) => window.__errors.push(event.reason?.message || String(event.reason)));
       window.__stored = {siteRules: {"": {selector: "#chosen-root"}}};
       window.__failOnce = true;
       window.IntersectionObserver = class {
@@ -16,6 +19,7 @@
       };
       window.chrome = {
         i18n: {detectLanguage(text, callback) {
+          if (window.__invalidateContext) throw new Error("Extension context invalidated.");
           const result = text === "when"
             ? {isReliable: false, languages: [{language: "cy", percentage: 55}]}
             : {isReliable: true, languages: [{language: "en", percentage: 100}]};
@@ -133,12 +137,26 @@
         const hoverMessage = window.__messages.find((message) => message.paragraphs?.[0]?.text === "Hover English words");
         const hoverWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Hover English words" && hoverMessage?.context?.previousText === "";
 
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("mouseout", {bubbles: true, relatedTarget: document.body}));
+        document.body.dispatchEvent(new MouseEvent("mouseout", {bubbles: true}));
+        window.__invalidateContext = true;
+        const invalidRange = document.createRange();
+        invalidRange.selectNodeContents(document.querySelector("#selection"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(invalidRange);
+        document.querySelector("#selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(10);
+        document.querySelector(".bwt-selection-action")?.click();
+        await wait(30);
+        window.__invalidateContext = false;
+        const errorHandlingWorked = window.__errors.length === 0;
+
         openMenu();
         document.querySelector('[data-action="site-toggle"]')?.click();
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && shortSelectionWorked && quickCancelWorked && hoverWorked && disableWorked ? "passed" : "failed";
+        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && shortSelectionWorked && quickCancelWorked && hoverWorked && errorHandlingWorked && disableWorked ? "passed" : "failed";
         document.title = `feature test ${document.body.dataset.test}`;
       })().catch((error) => {
         document.body.dataset.test = "failed";

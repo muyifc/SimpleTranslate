@@ -44,29 +44,32 @@
 
           window.__activeRequests += 1;
           window.__maxActiveRequests = Math.max(window.__maxActiveRequests, window.__activeRequests);
-          const paragraph = message.paragraphs[0];
+          const paragraphs = message.paragraphs;
           setTimeout(() => {
             window.__activeRequests -= 1;
-            callback(paragraph.text.includes("Failure")
+            callback(paragraphs.some(({text}) => text.includes("Failure"))
               ? {ok: false, error: "mock failure"}
-              : {ok: true, translations: [{
+              : {ok: true, translations: paragraphs.map((paragraph) => ({
                   id: paragraph.id,
                   text: paragraph.text.startsWith("Translation review")
                     ? "翻译评测： 1. 清晰度和流畅性。 2. 术语准确性。"
                     : `译文：${paragraph.text}`
-                }]});
-          }, paragraph.text.includes("Slow") ? 400 : 80);
+                }))});
+          }, paragraphs.some(({text}) => text.includes("Slow")) ? 400 : 80);
         }
       };
     </script>
   </head>
   <body>
-    <main>
+    <main class="layout__2-sidebars-inline">
       <article>
         <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
         <div id="standalone" data-visible="true">Translation review:<br>1. Clarity and fluidity<br>2. Terminology accuracy</div>
-        <div><p id="nested" data-visible="true">Nested paragraph</p></div>
         <div id="failure" data-visible="true">Failure paragraph</div>
+        <div><p id="nested" data-visible="true">Nested paragraph</p></div>
+        <p id="batch-a" data-visible="true">First batched paragraph</p>
+        <p id="batch-b" data-visible="true">Second batched paragraph</p>
+        <p id="batch-c" data-visible="true">Third batched paragraph</p>
         <p id="chinese" data-visible="true">这是一段中文正文，不应该发送给翻译服务。</p>
         <p id="french" data-visible="true">Bonjour le monde, ceci est un paragraphe français.</p>
         <div id="controls"><button type="button">Do not translate controls</button></div>
@@ -116,7 +119,7 @@
           initialVisibleOnly =
             document.querySelectorAll(".bwt-translation--pending").length === 4 &&
             !document.querySelector("#below + .bwt-translation") &&
-            initialBatches.length === 3 &&
+            initialBatches.length <= 5 &&
             floatingButton?.textContent === "…" &&
             floatingButton.dataset.status === "translating";
         }, 110);
@@ -152,7 +155,7 @@
             window.__viewportObserver?.trigger(document.querySelector("#below"));
             setTimeout(() => {
               immediateRestartState =
-                window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH").length === 6 &&
+                window.__messages.filter((message) => message.paragraphs?.some(({text}) => text === "Slow below viewport")).length === 2 &&
                 floatingButton?.dataset.status === "translating";
             }, 40);
           }, 20);
@@ -163,7 +166,11 @@
           const batches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           const cancellations = window.__messages.filter((message) => message.type === "BWT_CANCEL_REQUESTS");
           const belowTranslation = document.querySelector("#below + .bwt-translation");
-          const sentTexts = batches.map((message) => message.paragraphs[0].text);
+          const sentParagraphs = batches.flatMap((message) => message.paragraphs);
+          const sentTexts = sentParagraphs.map(({text}) => text);
+          const batchingWorked = batches.some((message) => message.paragraphs.length === 3) &&
+            batches.every((message) => message.paragraphs.length >= 1 && message.paragraphs.length <= 3) &&
+            batches.length < sentParagraphs.length;
           formattedListState =
             sentTexts.includes("Translation review:\n1. Clarity and fluidity\n2. Terminology accuracy") &&
             document.querySelector("#standalone + .bwt-translation")?.textContent === "翻译评测：\n1. 清晰度和流畅性。\n2. 术语准确性。";
@@ -190,11 +197,12 @@
             cancelledBeforeRestart &&
             immediateRestartState &&
             formattedListState &&
-            batches.length === 7 &&
-            batches.every((message) => message.paragraphs.length === 1 && message.sourceLanguage === "en") &&
+            batchingWorked &&
+            sentParagraphs.length === 9 &&
+            batches.every((message) => message.sourceLanguage === "en") &&
             cancellations.length === 1 &&
             window.__maxActiveRequests <= 3 &&
-            translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 4 &&
+            translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 7 &&
             translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1 &&
             belowTranslation?.classList.contains("bwt-translation--done") &&
             belowTranslation.textContent === "译文：Slow below viewport" &&

@@ -113,9 +113,18 @@ function test(name, run) {
 
 test("translates a valid paragraph batch", async () => {
   const harness = createHarness(settings());
-  const success = await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "p-1", text: "Hello"}]});
+  const success = await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [
+    {id: "p-1", text: "Hello"},
+    {id: "p-2", text: "World"},
+    {id: "p-3", text: "Again"},
+  ]});
   assert.equal(success.ok, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(success.translations)), [{id: "p-1", text: "译文-p-1"}]);
+  assert.equal(harness.fetchCount, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(success.translations)), [
+    {id: "p-1", text: "译文-p-1"},
+    {id: "p-2", text: "译文-p-2"},
+    {id: "p-3", text: "译文-p-3"},
+  ]);
 });
 
 test("persists translations and avoids a second identical API fetch after worker restart", async () => {

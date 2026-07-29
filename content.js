@@ -660,6 +660,8 @@
     for (const job of quickQueue.splice(0)) job.reject(new Error("翻译已取消"));
     enabled = false;
     generation += 1;
+    clearTimeout(pumpTimer);
+    pumpTimer = null;
     activeDetections = 0;
     activeRequests = 0;
     queue.length = 0;

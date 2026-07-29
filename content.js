@@ -68,12 +68,16 @@
   let hoverTarget;
   let contextPageUrl = location.href;
   let siteRuleLoaded = !chrome.storage?.local;
+  let contextInvalidated = false;
 
   const siteRuleReady = chrome.storage?.local
-    ? chrome.storage.local.get("siteRules").then(({siteRules = {}}) => {
+    ? Promise.resolve().then(() => chrome.storage.local.get("siteRules")).then(({siteRules = {}}) => {
         siteRule = siteRules[siteKey] || null;
         siteRuleLoaded = true;
-      }).catch(() => { siteRuleLoaded = true; })
+      }).catch((error) => {
+        siteRuleLoaded = true;
+        handleExtensionError(error);
+      })
     : Promise.resolve();
 
   const viewportObserver = new IntersectionObserver((entries) => {
@@ -215,6 +219,26 @@
     setFloatingStatus(activeDetections || activeRequests || activeQuickRequests || queue.length || quickQueue.length ? "translating" : hasErrors ? "error" : "ready");
   }
 
+  function handleExtensionError(error) {
+    if (!/Extension context invalidated/i.test(error?.message || "")) return false;
+    contextInvalidated = true;
+    enabled = false;
+    generation += 1;
+    queue.length = 0;
+    quickGeneration += 1;
+    if (quickAction) quickAction.hidden = true;
+    if (quickPanel) {
+      quickPanel.hidden = false;
+      quickPanel.textContent = "扩展已更新，请刷新页面";
+    }
+    if (floatingButton) {
+      setFloatingStatus("error");
+      floatingButton.title = "扩展已更新，请刷新页面";
+      floatingButton.setAttribute("aria-label", "扩展已更新，请刷新页面");
+    }
+    return true;
+  }
+
   function createFloatingButton() {
     const button = document.createElement("button");
     const menu = document.createElement("div");
@@ -251,7 +275,11 @@
       item.textContent = label;
       item.addEventListener("click", () => {
         closeMenu();
-        Promise.resolve(handler()).catch(() => {});
+        try {
+          Promise.resolve(handler()).catch(handleExtensionError);
+        } catch (error) {
+          handleExtensionError(error);
+        }
       });
       menu.append(item);
     }
@@ -346,7 +374,7 @@
     const detectionGeneration = generation;
     record.status = "detecting";
     activeDetections += 1;
-    chrome.i18n.detectLanguage(text, (result) => {
+    const onDetected = (result) => {
       if (detectionGeneration === generation) activeDetections -= 1;
       if (!enabled || detectionGeneration !== generation || record.status !== "detecting" || record.text !== text) {
         refreshFloatingStatus();
@@ -367,7 +395,14 @@
       queue.push({record, text, generation});
       setFloatingStatus("translating");
       pumpQueue();
-    });
+    };
+    try {
+      chrome.i18n.detectLanguage(text, onDetected);
+    } catch (error) {
+      if (detectionGeneration === generation) activeDetections -= 1;
+      record.status = "idle";
+      handleExtensionError(error);
+    }
   }
 
   function sendMessage(message) {
@@ -428,6 +463,7 @@
       setTranslation(record, record.translation, "done");
       rememberContext(text, record.translation);
     } catch (error) {
+      if (handleExtensionError(error)) return;
       if (jobGeneration === generation && enabled && record.status === "pending" && record.text === text) {
         hasErrors = true;
         setTranslation(record, "翻译失败，请右键悬浮球重试", "error");
@@ -628,11 +664,18 @@
   function detectEnglish(text) {
     if (!isTranslatable(text) || text.length > MAX_QUICK_CHARACTERS || hasCjk(text)) return Promise.resolve(false);
     const shortAsciiText = text.length <= 80 && /^[\x00-\x7f]*[A-Za-z][\x00-\x7f]*$/u.test(text);
-    return new Promise((resolve) => chrome.i18n.detectLanguage(text, (result) => {
-      const primary = result?.languages?.[0];
-      const detectedEnglish = primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80);
-      resolve(Boolean(detectedEnglish || (!result?.isReliable && shortAsciiText)));
-    }));
+    return new Promise((resolve) => {
+      try {
+        chrome.i18n.detectLanguage(text, (result) => {
+          const primary = result?.languages?.[0];
+          const detectedEnglish = primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80);
+          resolve(Boolean(detectedEnglish || (!result?.isReliable && shortAsciiText)));
+        });
+      } catch (error) {
+        handleExtensionError(error);
+        resolve(false);
+      }
+    });
   }
 
   function placeQuickControl(element, rect) {
@@ -675,6 +718,7 @@
       if (translation?.id !== id || typeof translation.text !== "string") throw new Error("翻译服务返回了无效结果");
       if (token === quickGeneration) quickPanel.textContent = formatTranslation(text, translation.text);
     } catch (error) {
+      if (handleExtensionError(error)) return;
       if (token === quickGeneration) quickPanel.textContent = error.message || "翻译失败";
     }
   }
@@ -735,7 +779,7 @@
 
     document.addEventListener("mouseout", (event) => {
       const element = event.target.closest?.(CANDIDATE_SELECTOR);
-      if (element !== hoverTarget || element.contains(event.relatedTarget)) return;
+      if (!element || element !== hoverTarget || element.contains(event.relatedTarget)) return;
       clearTimeout(hoverTimer);
       hoverTarget = null;
       quickGeneration += 1;

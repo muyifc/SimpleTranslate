@@ -109,7 +109,7 @@
         document.querySelector(".bwt-selection-action")?.click();
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
-        document.querySelector("#hover").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        getSelection().removeAllRanges();
         document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
         await wait(20);
         const clickAwayWorked = document.querySelector(".bwt-selection-action")?.hidden &&

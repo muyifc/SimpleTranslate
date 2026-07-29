@@ -28,8 +28,10 @@
     '[role="menu"]',
     '[role="dialog"]',
     '[aria-hidden="true"]',
-    '[class*="sidebar" i]',
-    '[id*="sidebar" i]',
+    '[class~="sidebar" i]',
+    '[id="sidebar" i]',
+    '[id^="sidebar-" i]',
+    '[id$="-sidebar" i]',
     '[class*="advertisement" i]',
     '[id*="advertisement" i]',
     ".bwt-translation",
@@ -783,6 +785,13 @@
       clearTimeout(hoverTimer);
       hoverTarget = null;
       quickGeneration += 1;
+      quickPanel.hidden = true;
+    }, true);
+
+    document.addEventListener("click", (event) => {
+      if (event.target.closest?.("[data-bwt-control]")) return;
+      quickGeneration += 1;
+      quickAction.hidden = true;
       quickPanel.hidden = true;
     }, true);
 

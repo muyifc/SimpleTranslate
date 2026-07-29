@@ -77,6 +77,8 @@
         <div id="below">Slow below viewport</div>
         <p id="below-2">Slow second below viewport</p>
         <p id="below-3">Slow third below viewport</p>
+        <p id="rapid-a">Rapid restart paragraph one</p>
+        <p id="rapid-b">Rapid restart paragraph two</p>
       </article>
       <p id="main-edge" data-visible="true">English content outside the article body</p>
       <article><p id="related-article" data-visible="true">Unrelated English article card</p></article>
@@ -95,6 +97,7 @@
         let cancelledBeforeRestart = false;
         let immediateRestartState = false;
         let formattedListState = false;
+        let fastRestartTimerWorked = false;
         const floatingButton = document.querySelector(".bwt-floating-button");
         const floatingMenu = document.querySelector(".bwt-floating-menu");
         const floatingStyle = floatingButton && getComputedStyle(floatingButton);
@@ -211,10 +214,30 @@
             errorStatus: floatingButton?.textContent === "!" && floatingButton.dataset.status === "error" && floatingButton.getAttribute("aria-label") === "部分内容翻译失败，点击停止",
             originalText: document.querySelector("#paragraph").textContent === "Hello world",
           };
-          const passed = Object.values(checks).every(Boolean);
-          document.body.dataset.test = passed ? "passed" : "failed";
-          document.title = passed ? "content test passed" : `content test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}; paragraphs=${sentParagraphs.length}; concurrency=${window.__maxActiveRequests}; batches=${batches.map(({paragraphs}) => `${paragraphs.length}:${paragraphs.map(({text}) => text.slice(0, 4)).join("+")}`).join("|")}`;
+          window.__coreChecks = checks;
         }, 800);
+
+        setTimeout(() => {
+          document.querySelector("#failure + .bwt-translation")?.remove();
+          document.querySelector("#failure")?.remove();
+          for (const id of ["#rapid-a", "#rapid-b"]) window.__viewportObserver?.trigger(document.querySelector(id));
+          setTimeout(() => {
+            floatingButton?.click();
+            floatingButton?.click();
+            for (const id of ["#rapid-a", "#rapid-b"]) window.__viewportObserver?.trigger(document.querySelector(id));
+            setTimeout(() => {
+              const earlyMessages = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Rapid restart")));
+              setTimeout(() => {
+                const rapidMessages = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Rapid restart")));
+                fastRestartTimerWorked = earlyMessages.length === 0 && rapidMessages.length === 1 && rapidMessages[0].paragraphs.length === 2;
+                const checks = {...window.__coreChecks, fastRestartTimerWorked};
+                const passed = Object.values(checks).every(Boolean);
+                document.body.dataset.test = passed ? "passed" : "failed";
+                document.title = passed ? "content test passed" : `content test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}`;
+              }, 30);
+            }, 20);
+          }, 15);
+        }, 820);
       });
     </script>
   </body>

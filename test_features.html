@@ -109,6 +109,11 @@
         document.querySelector(".bwt-selection-action")?.click();
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        await wait(20);
+        const clickAwayWorked = document.querySelector(".bwt-selection-action")?.hidden &&
+          document.querySelector(".bwt-quick-translation")?.hidden;
 
         const shortRange = document.createRange();
         shortRange.selectNodeContents(document.querySelector("#short-selection"));
@@ -156,7 +161,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && shortSelectionWorked && quickCancelWorked && hoverWorked && errorHandlingWorked && disableWorked ? "passed" : "failed";
+        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && clickAwayWorked && shortSelectionWorked && quickCancelWorked && hoverWorked && errorHandlingWorked && disableWorked ? "passed" : "failed";
         document.title = `feature test ${document.body.dataset.test}`;
       })().catch((error) => {
         document.body.dataset.test = "failed";

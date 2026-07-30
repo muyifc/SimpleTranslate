@@ -76,6 +76,7 @@
   let siteRuleLoaded = !chrome.storage?.local;
   let contextInvalidated = false;
   let prunePending = false;
+  let fullScanCount = 0;
 
   const siteRuleReady = chrome.storage?.local
     ? Promise.resolve().then(() => chrome.storage.local.get("siteRules")).then(({siteRules = {}}) => {
@@ -317,7 +318,21 @@
     if (toggle) toggle.textContent = siteRule?.disabled ? "启用此网站" : "禁用此网站";
   }
 
+  function registerCandidates(container) {
+    const candidates = container.matches(CANDIDATE_SELECTOR) ? [container, ...container.querySelectorAll(CANDIDATE_SELECTOR)] : container.querySelectorAll(CANDIDATE_SELECTOR);
+    let registered = 0;
+    for (const element of candidates) {
+      if (element.closest(EXCLUDED_SELECTOR)) continue;
+      if (element.matches("div") && element.querySelector(`${CANDIDATE_SELECTOR},button`)) continue;
+      registered += 1;
+      getRecord(element);
+      viewportObserver.observe(element);
+    }
+    return registered;
+  }
+
   function discoverCandidates() {
+    fullScanCount += 1;
     let roots = [];
     if (siteRule?.selector) {
       try {
@@ -340,18 +355,9 @@
     if (!roots.length && document.body) roots.push(document.body);
     activeRoots = roots;
 
-    const seen = new Set();
-    for (const root of roots) {
-      const candidates = root.matches(CANDIDATE_SELECTOR) ? [root, ...root.querySelectorAll(CANDIDATE_SELECTOR)] : root.querySelectorAll(CANDIDATE_SELECTOR);
-      for (const element of candidates) {
-        if (seen.has(element) || element.closest(EXCLUDED_SELECTOR)) continue;
-        if (element.matches("div") && element.querySelector(`${CANDIDATE_SELECTOR},button`)) continue;
-        seen.add(element);
-        getRecord(element);
-        viewportObserver.observe(element);
-      }
-    }
-    return seen.size;
+    let registered = 0;
+    for (const root of roots) registered += registerCandidates(root);
+    return registered;
   }
 
   function enqueue(element) {
@@ -856,7 +862,7 @@
   }
 
   // ponytail: Read-only counters for the browser test pages; internal state stays otherwise sealed in the IIFE.
-  globalThis.__bwtDebug = {recordCount: () => recordsById.size};
+  globalThis.__bwtDebug = {recordCount: () => recordsById.size, fullScans: () => fullScanCount};
 
   createFloatingButton();
   createQuickControls();
@@ -894,39 +900,68 @@
     }
   });
 
+  const ROOT_HINT_SELECTOR = 'article,main,[role="main"]';
+  const pendingChanged = new Set();
+  const pendingAdded = new Set();
+  let rescanPending = false;
+
   new MutationObserver((mutations) => {
     if (!enabled) return;
-    const changed = new Set();
-    let added = false;
-    let removed = false;
+    let scheduled = false;
 
     for (const mutation of mutations) {
       if (mutation.type === "characterData") {
         const element = mutation.target.parentElement?.closest(CANDIDATE_SELECTOR);
-        if (element && isInActiveRoot(element) && !element.closest(EXCLUDED_SELECTOR)) changed.add(element);
+        if (element && isInActiveRoot(element) && !element.closest(EXCLUDED_SELECTOR)) {
+          pendingChanged.add(element);
+          scheduled = true;
+        }
         continue;
       }
-      if ([...mutation.addedNodes].some((node) => {
-        if (node.nodeType === Node.TEXT_NODE) return !node.parentElement?.closest(EXCLUDED_SELECTOR);
-        return node.nodeType === Node.ELEMENT_NODE && !node.closest(".bwt-translation");
-      })) {
-        added = true;
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const element = node.parentElement?.closest(CANDIDATE_SELECTOR);
+          if (element && isInActiveRoot(element) && !element.closest(EXCLUDED_SELECTOR)) {
+            pendingChanged.add(element);
+            scheduled = true;
+          }
+          continue;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE || node.closest(".bwt-translation")) continue;
+        // ponytail: A new semantic root can change which container wins discovery, so only that forces a full rescan.
+        if (node.matches(ROOT_HINT_SELECTOR) || node.querySelector(ROOT_HINT_SELECTOR)) rescanPending = true;
+        else pendingAdded.add(node);
+        scheduled = true;
       }
       if ([...mutation.removedNodes].some((node) => node.nodeType === Node.ELEMENT_NODE && !node.matches(".bwt-translation"))) {
-        removed = true;
+        prunePending = true;
+        scheduled = true;
       }
     }
-    if (!added && !removed && !changed.size) return;
-    prunePending ||= removed;
+    if (!scheduled) return;
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      for (const element of changed) resetRecord(element);
+      const changed = [...pendingChanged];
+      const added = [...pendingAdded];
+      pendingChanged.clear();
+      pendingAdded.clear();
+      for (const element of changed) {
+        if (element.isConnected) resetRecord(element);
+      }
       if (prunePending) {
         prunePending = false;
         pruneRecords();
       }
-      discoverCandidates();
+      const fullScan = rescanPending || !activeRoots.length || activeRoots.some((root) => !root.isConnected);
+      rescanPending = false;
+      if (fullScan) {
+        discoverCandidates();
+        return;
+      }
+      for (const element of added) {
+        if (element.isConnected && isInActiveRoot(element) && !element.closest(EXCLUDED_SELECTOR)) registerCandidates(element);
+      }
     }, 250);
   }).observe(document.documentElement, {childList: true, characterData: true, subtree: true});
 })();

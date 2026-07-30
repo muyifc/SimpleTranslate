@@ -63,6 +63,14 @@
   <body>
     <main class="layout__2-sidebars-inline">
       <article>
+        <p id="large-a" data-visible="true"></p>
+        <p id="large-b" data-visible="true"></p>
+        <p id="large-c" data-visible="true"></p>
+        <script>
+          for (const [id, letter] of [["large-a", "a"], ["large-b", "b"], ["large-c", "c"]]) {
+            document.querySelector(`#${id}`).textContent = `Large ${letter} ${letter.repeat(5100)}`;
+          }
+        </script>
         <p id="paragraph" data-visible="true">Hello <strong>world</strong></p>
         <div id="standalone" data-visible="true">Translation review:<br>1. Clarity and fluidity<br>2. Terminology accuracy</div>
         <div><p id="nested" data-visible="true">Nested paragraph</p></div>
@@ -123,7 +131,7 @@
         setTimeout(() => {
           const initialBatches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           initialVisibleOnly =
-            document.querySelectorAll(".bwt-translation--pending").length === 7 &&
+            document.querySelectorAll(".bwt-translation--pending").length === 10 &&
             !document.querySelector("#below + .bwt-translation") &&
             initialBatches.length === 3 &&
             floatingButton?.textContent === "…" &&
@@ -177,6 +185,9 @@
           const batchingWorked = batches.some((message) => message.paragraphs.length === 3) &&
             batches.every((message) => message.paragraphs.length >= 1 && message.paragraphs.length <= 3) &&
             batches.length < sentParagraphs.length;
+          const batchCharacterLimitWorked = batches.every((message) =>
+            message.paragraphs.reduce((sum, {text}) => sum + text.length, 0) <= 10000
+          );
           formattedListState =
             sentTexts.includes("Translation review:\n1. Clarity and fluidity\n2. Terminology accuracy") &&
             document.querySelector("#standalone + .bwt-translation")?.textContent === "翻译评测：\n1. 清晰度和流畅性。\n2. 术语准确性。";
@@ -204,11 +215,12 @@
             immediateRestartState,
             formattedListState,
             batchingWorked,
-            paragraphCount: sentParagraphs.length === 14,
+            batchCharacterLimitWorked,
+            paragraphCount: sentParagraphs.length === 17,
             languages: batches.every((message) => message.sourceLanguage === "en"),
             cancellationCount: cancellations.length === 1,
             concurrency: window.__maxActiveRequests <= 3,
-            doneCount: translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 9,
+            doneCount: translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 12,
             errorCount: translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1,
             belowDone: belowTranslations.every((node) => node?.classList.contains("bwt-translation--done")),
             belowText: belowTranslations[0].textContent === "译文：Slow below viewport",

@@ -98,6 +98,11 @@ function createHarness(storageState) {
         if (fetchCount === 1) throw new TypeError("network down");
         return successResponse;
       }
+      if (fetchMode === "hung") {
+        return new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        }, {once: true}));
+      }
       return new Promise((resolve, reject) => {
         const timer = setTimeout(resolve, 1000);
         options.signal.addEventListener("abort", () => {
@@ -315,6 +320,19 @@ test("does not retry non-transient client errors", async () => {
   assert.equal(response.ok, false);
   assert.match(response.error, /400/);
   assert.equal(harness.fetchCount, 1, "400 不应触发重试");
+});
+
+test("times out a hung translation request", async () => {
+  const harness = createHarness(settings());
+  harness.setFetchMode("hung");
+  const response = await Promise.race([
+    harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "timeout-1", text: "Never returns"}]}),
+    new Promise((_resolve, reject) => setTimeout(() => reject(new Error("翻译请求没有自动超时")), 200)),
+  ]);
+  assert.equal(response.ok, false);
+  assert.match(response.error, /超时/);
+  assert.equal(harness.lastSignal.aborted, true);
+  assert(harness.timeoutDelays.some((ms) => ms >= 30000), "应设置明确的请求超时");
 });
 
 test("abort during backoff cancels immediately without another attempt", async () => {

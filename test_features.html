@@ -20,7 +20,7 @@
       window.chrome = {
         i18n: {detectLanguage(text, callback) {
           if (window.__invalidateContext) throw new Error("Extension context invalidated.");
-          const result = text === "when"
+          const result = ["when", "Overview"].includes(text)
             ? {isReliable: false, languages: [{language: "cy", percentage: 55}]}
             : {isReliable: true, languages: [{language: "en", percentage: 100}]};
           setTimeout(() => callback(result), text.includes("Delayed") ? 50 : 0);
@@ -59,6 +59,7 @@
   <body>
     <main id="ignored-root"><p data-visible="true">Ignored main text</p></main>
     <article id="chosen-root">
+      <h2 id="short-heading" data-visible="true">Overview</h2>
       <p id="first" data-visible="true">First contextual paragraph</p>
       <p id="retry" data-visible="true">Retry this paragraph</p>
     </article>
@@ -79,6 +80,7 @@
 
         const initialTexts = window.__messages.filter(({type}) => type === "BWT_TRANSLATE_BATCH").flatMap(({paragraphs}) => paragraphs.map(({text}) => text));
         const savedRootWorked = initialTexts.includes("First contextual paragraph") && !initialTexts.includes("Ignored main text");
+        const shortHeadingWorked = initialTexts.includes("Overview") && document.querySelector("#short-heading + .bwt-translation")?.classList.contains("bwt-translation--done");
         const contextWorked = window.__messages.some((message) => message.context?.pageTitle === "feature test pending");
 
         openMenu();
@@ -178,7 +180,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

@@ -60,6 +60,7 @@ function safeContext(context) {
 }
 
 function cacheKey({apiUrl, model, glossary, sourceLanguage, targetLanguage, context, text}) {
+  // ponytail: The rolling previousText changes with scroll order, so keying on it would defeat the persistent cache.
   return JSON.stringify([
     CACHE_PROMPT_VERSION,
     apiUrl,
@@ -68,7 +69,6 @@ function cacheKey({apiUrl, model, glossary, sourceLanguage, targetLanguage, cont
     sourceLanguage,
     targetLanguage,
     context.pageTitle,
-    context.previousText,
     text,
   ]);
 }

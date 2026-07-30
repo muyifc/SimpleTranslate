@@ -6,6 +6,14 @@ const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
 const popupSource = fs.readFileSync("popup.js", "utf8");
 assert(manifest.permissions.includes("scripting"));
 assert.match(popupSource, /chrome\.scripting\.executeScript/);
+assert.deepEqual(manifest.icons, {
+  16: "icons/icon-16.png",
+  32: "icons/icon-32.png",
+  48: "icons/icon-48.png",
+  128: "icons/icon-128.png"
+});
+assert.deepEqual(manifest.action.default_icon, manifest.icons);
+assert(manifest.web_accessible_resources.some(({resources}) => resources.includes("icons/floating-ball-128.png")));
 assert.deepEqual(manifest.content_scripts, [{
   matches: ["http://*/*", "https://*/*"],
   js: ["content.js"],

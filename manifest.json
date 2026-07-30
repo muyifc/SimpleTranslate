@@ -3,6 +3,12 @@
   "name": "双语网页翻译",
   "version": "0.1.0",
   "description": "将当前网页正文翻译为简体中文，并在原文下方显示译文。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": ["activeTab", "scripting", "storage"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "content_scripts": [
@@ -15,8 +21,20 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "双语网页翻译"
+    "default_title": "双语网页翻译",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/floating-ball-128.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   }

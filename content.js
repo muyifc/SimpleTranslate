@@ -75,6 +75,7 @@
   let contextPageUrl = location.href;
   let siteRuleLoaded = !chrome.storage?.local;
   let contextInvalidated = false;
+  let prunePending = false;
 
   const siteRuleReady = chrome.storage?.local
     ? Promise.resolve().then(() => chrome.storage.local.get("siteRules")).then(({siteRules = {}}) => {
@@ -691,6 +692,16 @@
     viewportObserver.observe(element);
   }
 
+  function pruneRecords() {
+    // ponytail: recordsById pins removed elements strongly; without pruning, SPA navigation leaks every old article.
+    for (const [id, record] of recordsById) {
+      if (record.element.isConnected) continue;
+      viewportObserver.unobserve(record.element);
+      record.node?.remove();
+      recordsById.delete(id);
+    }
+  }
+
   async function removeTranslations() {
     await cancelTranslation();
     document.documentElement.classList.remove("bwt-show-original");
@@ -844,6 +855,9 @@
     }, true);
   }
 
+  // ponytail: Read-only counters for the browser test pages; internal state stays otherwise sealed in the IIFE.
+  globalThis.__bwtDebug = {recordCount: () => recordsById.size};
+
   createFloatingButton();
   createQuickControls();
   siteRuleReady.then(() => {
@@ -884,23 +898,34 @@
     if (!enabled) return;
     const changed = new Set();
     let added = false;
+    let removed = false;
 
     for (const mutation of mutations) {
       if (mutation.type === "characterData") {
         const element = mutation.target.parentElement?.closest(CANDIDATE_SELECTOR);
         if (element && isInActiveRoot(element) && !element.closest(EXCLUDED_SELECTOR)) changed.add(element);
-      } else if ([...mutation.addedNodes].some((node) => {
+        continue;
+      }
+      if ([...mutation.addedNodes].some((node) => {
         if (node.nodeType === Node.TEXT_NODE) return !node.parentElement?.closest(EXCLUDED_SELECTOR);
         return node.nodeType === Node.ELEMENT_NODE && !node.closest(".bwt-translation");
       })) {
         added = true;
       }
+      if ([...mutation.removedNodes].some((node) => node.nodeType === Node.ELEMENT_NODE && !node.matches(".bwt-translation"))) {
+        removed = true;
+      }
     }
-    if (!added && !changed.size) return;
+    if (!added && !removed && !changed.size) return;
+    prunePending ||= removed;
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       for (const element of changed) resetRecord(element);
+      if (prunePending) {
+        prunePending = false;
+        pruneRecords();
+      }
       discoverCandidates();
     }, 250);
   }).observe(document.documentElement, {childList: true, characterData: true, subtree: true});

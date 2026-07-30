@@ -2,6 +2,8 @@ const controllersByTab = new Map();
 const CACHE_STORAGE_KEY = "translationCacheV1";
 const CACHE_PROMPT_VERSION = 1;
 const MAX_CACHE_ENTRIES = 300;
+// ponytail: Two backoff retries cover throttling bursts; anything longer keeps paragraphs stuck in "pending" too long.
+const RETRY_DELAYS_MS = [500, 2000];
 let cachePromise;
 let cacheGeneration = 0;
 
@@ -80,6 +82,38 @@ async function cacheKey({apiUrl, model, glossary, sourceLanguage, targetLanguage
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, {once: true});
+  });
+}
+
+async function fetchWithRetry(endpoint, requestInit) {
+  for (let attempt = 0; ; attempt += 1) {
+    if (attempt) await wait(RETRY_DELAYS_MS[attempt - 1], requestInit.signal);
+    let response;
+    try {
+      response = await fetch(endpoint, requestInit);
+    } catch (error) {
+      // ponytail: Network failures retry; malformed responses do not, so a broken endpoint never triples the bill.
+      if (error?.name === "AbortError" || attempt >= RETRY_DELAYS_MS.length) throw error;
+      continue;
+    }
+    if (response.ok) return response;
+    const transient = response.status === 429 || response.status >= 500;
+    if (!transient || attempt >= RETRY_DELAYS_MS.length) throw new Error(`翻译接口请求失败（${response.status}）`);
+  }
+}
+
 function isAllowedEndpoint(endpoint) {
   return endpoint.protocol === "https:" || (endpoint.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname));
 }
@@ -155,7 +189,7 @@ async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage 
     const headers = {"Content-Type": "application/json"};
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-    const response = await fetch(endpoint, {
+    const response = await fetchWithRetry(endpoint, {
       method: "POST",
       headers,
       signal,
@@ -180,8 +214,6 @@ async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage 
         ]
       })
     });
-
-    if (!response.ok) throw new Error(`翻译接口请求失败（${response.status}）`);
 
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content;

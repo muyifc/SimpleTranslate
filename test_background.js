@@ -45,6 +45,7 @@ function createHarness(storageState) {
   let fetchCount = 0;
   let cacheWrites = 0;
   const requests = [];
+  const timeoutDelays = [];
   const context = {
     URL,
     Set,
@@ -55,7 +56,11 @@ function createHarness(storageState) {
     DOMException,
     TextEncoder,
     crypto,
-    setTimeout,
+    // 记录 background 内部请求的等待时长，并压缩到 25ms 内让退避测试保持快速。
+    setTimeout: (fn, ms, ...args) => {
+      timeoutDelays.push(ms);
+      return setTimeout(fn, Math.min(ms || 0, 25), ...args);
+    },
     clearTimeout,
     chrome: {
       runtime: {onMessage: {addListener(fn) { listener = fn; }}},
@@ -86,6 +91,13 @@ function createHarness(storageState) {
         };
       if (fetchMode === "success") return successResponse;
       if (fetchMode === "delayedSuccess") return new Promise((resolve) => setTimeout(() => resolve(successResponse), 50));
+      if (fetchMode === "flaky429") return fetchCount === 1 ? {ok: false, status: 429} : successResponse;
+      if (fetchMode === "always429") return {ok: false, status: 429};
+      if (fetchMode === "badRequest") return {ok: false, status: 400};
+      if (fetchMode === "networkErrorOnce") {
+        if (fetchCount === 1) throw new TypeError("network down");
+        return successResponse;
+      }
       return new Promise((resolve, reject) => {
         const timer = setTimeout(resolve, 1000);
         options.signal.addEventListener("abort", () => {
@@ -103,6 +115,7 @@ function createHarness(storageState) {
     get fetchCount() { return fetchCount; },
     get cacheWrites() { return cacheWrites; },
     get lastSignal() { return lastSignal; },
+    timeoutDelays,
     requests,
     setFetchMode(mode) { fetchMode = mode; },
     send(message, sender = {tab: {id: 7}}) {
@@ -276,6 +289,43 @@ test("does not let an in-flight request restore a cleared cache", async () => {
   await harness.send({type: "BWT_CLEAR_CACHE"});
   assert.equal((await pending).ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(storageState.translationCacheV1)), {});
+});
+
+test("retries a transient 429 response with backoff", async () => {
+  const harness = createHarness(settings());
+  harness.setFetchMode("flaky429");
+  const response = await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "retry-1", text: "Retry after throttling"}]});
+  assert.equal(response.ok, true);
+  assert.equal(harness.fetchCount, 2, "429 后应自动重试一次");
+  assert(harness.timeoutDelays.some((ms) => ms >= 400), "重试前应有退避等待");
+});
+
+test("retries a transient network failure", async () => {
+  const harness = createHarness(settings());
+  harness.setFetchMode("networkErrorOnce");
+  const response = await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "retry-2", text: "Retry after network failure"}]});
+  assert.equal(response.ok, true);
+  assert.equal(harness.fetchCount, 2, "网络错误后应自动重试一次");
+});
+
+test("does not retry non-transient client errors", async () => {
+  const harness = createHarness(settings());
+  harness.setFetchMode("badRequest");
+  const response = await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "retry-3", text: "Bad request stays failed"}]});
+  assert.equal(response.ok, false);
+  assert.match(response.error, /400/);
+  assert.equal(harness.fetchCount, 1, "400 不应触发重试");
+});
+
+test("abort during backoff cancels immediately without another attempt", async () => {
+  const harness = createHarness(settings());
+  harness.setFetchMode("always429");
+  const pending = harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "retry-4", text: "Cancel during backoff"}]});
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await harness.send({type: "BWT_CANCEL_REQUESTS"});
+  const response = await pending;
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), {ok: false, error: "翻译已取消"});
+  assert.equal(harness.fetchCount, 1, "取消后不应再发起重试请求");
 });
 
 test("cancels each pending request for the active tab", async () => {

@@ -103,6 +103,11 @@
         const regionWorked = selectedRule && document.querySelector(selectedRule) === document.querySelector("#new-root") &&
           window.__messages.some((message) => message.paragraphs?.some(({text}) => text === "New selected paragraph"));
 
+        const recordsBefore = window.__bwtDebug?.recordCount() ?? 0;
+        document.querySelector("#chosen-root").remove();
+        await wait(350);
+        const pruneWorked = (window.__bwtDebug?.recordCount() ?? Infinity) < recordsBefore;
+
         const range = document.createRange();
         range.selectNodeContents(document.querySelector("#selection"));
         getSelection().removeAllRanges();
@@ -164,8 +169,11 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        document.body.dataset.test = savedRootWorked && contextWorked && retryWorked && clearRuleWorked && regionWorked && selectionWorked && clickAwayWorked && shortSelectionWorked && quickCancelWorked && hoverWorked && errorHandlingWorked && disableWorked ? "passed" : "failed";
-        document.title = `feature test ${document.body.dataset.test}`;
+        const checks = {savedRootWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
+        document.title = document.body.dataset.test === "passed"
+          ? "feature test passed"
+          : `feature test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}`;
       })().catch((error) => {
         document.body.dataset.test = "failed";
         document.title = `feature test failed: ${error.message}`;

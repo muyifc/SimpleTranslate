@@ -43,6 +43,7 @@ function createHarness(storageState) {
   let fetchMode = "success";
   let lastSignal;
   let fetchCount = 0;
+  let cacheWrites = 0;
   const requests = [];
   const context = {
     URL,
@@ -52,13 +53,21 @@ function createHarness(storageState) {
     Error,
     AbortController,
     DOMException,
+    TextEncoder,
+    crypto,
     setTimeout,
     clearTimeout,
     chrome: {
       runtime: {onMessage: {addListener(fn) { listener = fn; }}},
       storage: {local: {
         get: async (keys) => storageGet(storageState, keys),
-        set: async (values) => Object.assign(storageState, values)
+        set: (values) => new Promise((resolve) => {
+          if ("translationCacheV1" in values) cacheWrites += 1;
+          setTimeout(() => {
+            Object.assign(storageState, values);
+            resolve();
+          }, 5);
+        })
       }}
     },
     fetch: async (_url, options) => {
@@ -92,6 +101,7 @@ function createHarness(storageState) {
 
   return {
     get fetchCount() { return fetchCount; },
+    get cacheWrites() { return cacheWrites; },
     get lastSignal() { return lastSignal; },
     requests,
     setFetchMode(mode) { fetchMode = mode; },
@@ -198,6 +208,33 @@ test("separates cached translations by model, glossary, source language, and tar
     assert.equal((await worker.send(variant.message)).ok, true);
     assert.equal(worker.fetchCount, 1, `缓存键必须包含 ${variant.label}`);
   }
+});
+
+test("stores hashed cache keys and coalesces writes for concurrent batches", async () => {
+  const storageState = settings();
+  const harness = createHarness(storageState);
+  const responses = await Promise.all(["one", "two", "three"].map((word, index) => harness.send({
+    type: "BWT_TRANSLATE_BATCH",
+    paragraphs: [{id: `co-${index}`, text: `Concurrent paragraph ${word}`}]
+  })));
+  assert(responses.every((response) => response.ok));
+  assert.equal(harness.fetchCount, 3);
+
+  const keys = Object.keys(storageState.translationCacheV1 || {});
+  assert.equal(keys.length, 3);
+  assert(keys.every((key) => /^[0-9a-f]{64}$/.test(key)), "缓存键应为定长哈希，而不是包含原文的 JSON 字符串");
+  assert(harness.cacheWrites < 3, `并发批次完成后的缓存写入应合并（实际写入 ${harness.cacheWrites} 次）`);
+});
+
+test("drops legacy full-text cache entries on load", async () => {
+  const legacyKey = JSON.stringify([1, "https://example.test/v1/chat/completions", "test-model", "", "en", "zh-CN", "Old title", "Legacy cached paragraph"]);
+  const storageState = settings({translationCacheV1: {[legacyKey]: {text: "旧译文", at: 1}}});
+  const harness = createHarness(storageState);
+  assert.equal((await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "m-1", text: "Fresh paragraph"}]})).ok, true);
+
+  const keys = Object.keys(storageState.translationCacheV1);
+  assert(!keys.includes(legacyKey), "旧格式的全文键条目应在加载时被清理");
+  assert.equal(keys.length, 1);
 });
 
 test("adds the configured glossary and page context without translating context as paragraphs", async () => {

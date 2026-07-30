@@ -153,6 +153,28 @@ test("persists translations and avoids a second identical API fetch after worker
   assert.equal(restartedWorker.fetchCount, 0, "相同请求在后台重启后应从 chrome.storage.local 缓存读取");
 });
 
+test("reuses cached translations when only the rolling context differs", async () => {
+  const storageState = settings();
+  const baseMessage = {
+    type: "BWT_TRANSLATE_BATCH",
+    sourceLanguage: "en",
+    targetLanguage: "zh-CN",
+    context: {pageTitle: "Autonomous agents", previousText: "First rolling context."},
+    paragraphs: [{id: "ctx-vary-1", text: "The agent entered the cockpit."}]
+  };
+  const firstWorker = createHarness(storageState);
+  assert.equal((await firstWorker.send(baseMessage)).ok, true);
+  assert.equal(firstWorker.fetchCount, 1);
+
+  const restartedWorker = createHarness(storageState);
+  const laterMessage = {
+    ...baseMessage,
+    context: {pageTitle: "Autonomous agents", previousText: "A completely different rolling context accumulated while scrolling."}
+  };
+  assert.equal((await restartedWorker.send(laterMessage)).ok, true);
+  assert.equal(restartedWorker.fetchCount, 0, "滚动上下文变化不应导致持久缓存未命中");
+});
+
 test("separates cached translations by model, glossary, source language, and target language", async () => {
   const storageState = settings();
   const baseMessage = {

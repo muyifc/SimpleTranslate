@@ -46,7 +46,12 @@ async function getCache() {
   if (!cachePromise) {
     cachePromise = chrome.storage.local.get(CACHE_STORAGE_KEY).then((stored) => {
       const cache = stored[CACHE_STORAGE_KEY];
-      return cache && typeof cache === "object" && !Array.isArray(cache) ? cache : {};
+      if (!cache || typeof cache !== "object" || Array.isArray(cache)) return {};
+      // ponytail: Entries from before key hashing embed full paragraph text in the key; drop them instead of migrating.
+      for (const key of Object.keys(cache)) {
+        if (!/^[0-9a-f]{64}$/.test(key)) delete cache[key];
+      }
+      return cache;
     });
   }
   return cachePromise;
@@ -59,9 +64,9 @@ function safeContext(context) {
   };
 }
 
-function cacheKey({apiUrl, model, glossary, sourceLanguage, targetLanguage, context, text}) {
+async function cacheKey({apiUrl, model, glossary, sourceLanguage, targetLanguage, context, text}) {
   // ponytail: The rolling previousText changes with scroll order, so keying on it would defeat the persistent cache.
-  return JSON.stringify([
+  const material = JSON.stringify([
     CACHE_PROMPT_VERSION,
     apiUrl,
     model,
@@ -71,19 +76,45 @@ function cacheKey({apiUrl, model, glossary, sourceLanguage, targetLanguage, cont
     context.pageTitle,
     text,
   ]);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function isAllowedEndpoint(endpoint) {
   return endpoint.protocol === "https:" || (endpoint.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname));
 }
 
-async function persistCache(cache) {
+async function writeCache(cache) {
   const entries = Object.entries(cache);
   if (entries.length > MAX_CACHE_ENTRIES) {
     entries.sort(([, left], [, right]) => (left.at || 0) - (right.at || 0));
     for (const [key] of entries.slice(0, entries.length - MAX_CACHE_ENTRIES)) delete cache[key];
   }
   await chrome.storage.local.set({[CACHE_STORAGE_KEY]: cache}).catch(() => {});
+}
+
+let cacheWriteInFlight = null;
+let cacheWriteQueued = null;
+let cacheWriteQueuedArgs = null;
+
+function persistCache(cache, generation) {
+  // ponytail: One storage.set in flight at a time; batches finishing meanwhile share a single follow-up write.
+  if (!cacheWriteInFlight) {
+    cacheWriteInFlight = writeCache(cache).finally(() => { cacheWriteInFlight = null; });
+    return cacheWriteInFlight;
+  }
+  cacheWriteQueuedArgs = {cache, generation};
+  if (!cacheWriteQueued) {
+    cacheWriteQueued = cacheWriteInFlight.then(() => {
+      const {cache: nextCache, generation: nextGeneration} = cacheWriteQueuedArgs;
+      cacheWriteQueued = null;
+      cacheWriteQueuedArgs = null;
+      if (nextGeneration !== cacheGeneration) return;
+      cacheWriteInFlight = writeCache(nextCache).finally(() => { cacheWriteInFlight = null; });
+      return cacheWriteInFlight;
+    });
+  }
+  return cacheWriteQueued;
 }
 
 async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage = "zh-CN", context, signal) {
@@ -105,20 +136,20 @@ async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage 
   const results = new Map();
   const misses = [];
 
-  for (const paragraph of paragraphs) {
-    const key = cacheKey({
-      apiUrl: endpoint.href,
-      model,
-      glossary: normalizedGlossary,
-      sourceLanguage,
-      targetLanguage,
-      context: normalizedContext,
-      text: paragraph.text,
-    });
-    const cached = cache[key];
+  const keys = await Promise.all(paragraphs.map(({text}) => cacheKey({
+    apiUrl: endpoint.href,
+    model,
+    glossary: normalizedGlossary,
+    sourceLanguage,
+    targetLanguage,
+    context: normalizedContext,
+    text,
+  })));
+  paragraphs.forEach((paragraph, index) => {
+    const cached = cache[keys[index]];
     if (typeof cached?.text === "string") results.set(paragraph.id, cached.text);
-    else misses.push({...paragraph, cacheKey: key});
-  }
+    else misses.push({...paragraph, cacheKey: keys[index]});
+  });
 
   if (misses.length) {
     const headers = {"Content-Type": "application/json"};
@@ -178,7 +209,7 @@ async function translateBatch(paragraphs, sourceLanguage = "en", targetLanguage 
       results.set(id, text);
       if (requestCacheGeneration === cacheGeneration) cache[missById.get(id).cacheKey] = {text, at: Date.now()};
     }
-    if (requestCacheGeneration === cacheGeneration) await persistCache(cache);
+    if (requestCacheGeneration === cacheGeneration) await persistCache(cache, requestCacheGeneration);
   }
 
   return paragraphs.map(({id}) => ({id, text: results.get(id)}));

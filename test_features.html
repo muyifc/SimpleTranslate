@@ -108,6 +108,15 @@
         await wait(350);
         const pruneWorked = (window.__bwtDebug?.recordCount() ?? Infinity) < recordsBefore;
 
+        const scansBefore = window.__bwtDebug?.fullScans?.() ?? 0;
+        const dynamicParagraph = document.createElement("p");
+        dynamicParagraph.dataset.visible = "true";
+        dynamicParagraph.textContent = "Dynamically added paragraph";
+        document.querySelector("#new-root").append(dynamicParagraph);
+        await wait(350);
+        const incrementalWorked = window.__messages.some((message) => message.paragraphs?.some(({text}) => text === "Dynamically added paragraph")) &&
+          (window.__bwtDebug?.fullScans?.() ?? Infinity) === scansBefore;
+
         const range = document.createRange();
         range.selectNodeContents(document.querySelector("#selection"));
         getSelection().removeAllRanges();
@@ -169,7 +178,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

@@ -2,6 +2,7 @@ const controllersByTab = new Map();
 const CACHE_STORAGE_KEY = "translationCacheV1";
 const CACHE_PROMPT_VERSION = 1;
 const MAX_CACHE_ENTRIES = 300;
+const REQUEST_TIMEOUT_MS = 45_000;
 // ponytail: Two backoff retries cover throttling bursts; anything longer keeps paragraphs stuck in "pending" too long.
 const RETRY_DELAYS_MS = [500, 2000];
 let cachePromise;
@@ -27,6 +28,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "BWT_TRANSLATE_BATCH") return;
 
   const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
   const controllers = controllersByTab.get(tabId) || new Set();
   controllers.add(controller);
   controllersByTab.set(tabId, controllers);
@@ -35,9 +41,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .then((translations) => sendResponse({ok: true, translations}))
     .catch((error) => sendResponse({
       ok: false,
-      error: error.name === "AbortError" ? "翻译已取消" : error.message || String(error),
+      error: error.name === "AbortError" ? timedOut ? "翻译请求超时" : "翻译已取消" : error.message || String(error),
     }))
     .finally(() => {
+      clearTimeout(timeout);
       controllers.delete(controller);
       if (!controllers.size && controllersByTab.get(tabId) === controllers) controllersByTab.delete(tabId);
     });

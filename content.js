@@ -42,6 +42,7 @@
   // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
   const MAX_CONCURRENT_REQUESTS = 3;
   const MAX_BATCH_PARAGRAPHS = 3;
+  const MAX_BATCH_CHARACTERS = 10000;
   // ponytail: A fixed 20ms window coalesces one viewport burst; make it adaptive only if measurements justify it.
   const BATCH_DELAY_MS = 20;
   const records = new WeakMap();
@@ -127,6 +128,15 @@
 
   function hasCjk(text) {
     return /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text);
+  }
+
+  function isDetectedEnglish(text, result) {
+    const primary = result?.languages?.[0];
+    const shortAsciiText = text.length <= 80 && /^[\x00-\x7f]*[A-Za-z][\x00-\x7f]*$/u.test(text);
+    return Boolean(
+      primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80) ||
+      !result?.isReliable && shortAsciiText
+    );
   }
 
   function requestContext() {
@@ -393,8 +403,7 @@
         refreshFloatingStatus();
         return;
       }
-      const primary = result?.languages?.[0];
-      if (!primary?.language?.startsWith("en") || (!result.isReliable && (primary.percentage || 0) < 80)) {
+      if (!isDetectedEnglish(text, result)) {
         record.node?.remove();
         record.node = null;
         record.status = "skipped";
@@ -513,6 +522,7 @@
   function pumpQueue() {
     while (enabled && activeRequests + activeQuickRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
       const jobs = [];
+      let batchCharacters = 0;
       while (queue.length && jobs.length < MAX_BATCH_PARAGRAPHS) {
         const job = queue.shift();
         if (job.generation !== generation || job.record.status !== "queued") continue;
@@ -520,7 +530,12 @@
           queue.unshift(job);
           break;
         }
+        if (jobs.length && batchCharacters + job.text.length > MAX_BATCH_CHARACTERS) {
+          queue.unshift(job);
+          break;
+        }
         jobs.push(job);
+        batchCharacters += job.text.length;
         if (job.single) break;
       }
       if (!jobs.length) continue;
@@ -723,13 +738,10 @@
 
   function detectEnglish(text) {
     if (!isTranslatable(text) || text.length > MAX_QUICK_CHARACTERS || hasCjk(text)) return Promise.resolve(false);
-    const shortAsciiText = text.length <= 80 && /^[\x00-\x7f]*[A-Za-z][\x00-\x7f]*$/u.test(text);
     return new Promise((resolve) => {
       try {
         chrome.i18n.detectLanguage(text, (result) => {
-          const primary = result?.languages?.[0];
-          const detectedEnglish = primary?.language?.startsWith("en") && (result.isReliable || (primary.percentage || 0) >= 80);
-          resolve(Boolean(detectedEnglish || (!result?.isReliable && shortAsciiText)));
+          resolve(isDetectedEnglish(text, result));
         });
       } catch (error) {
         handleExtensionError(error);

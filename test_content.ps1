@@ -5,7 +5,7 @@ $profile = Join-Path ([System.IO.Path]::GetTempPath()) ("bwt-content-test-" + [g
 
 New-Item -ItemType Directory -Path $profile | Out-Null
 try {
-  foreach ($testFile in @("test_content.html", "test_features.html")) {
+  foreach ($testFile in @("test_content.html", "test_features.html", "test_batching.html")) {
     $page = ([uri](Join-Path $workspace $testFile)).AbsoluteUri
     $stdout = Join-Path $profile "$testFile.stdout.txt"
     $stderr = Join-Path $profile "$testFile.stderr.txt"

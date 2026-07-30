@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>batching test pending</title>
+    <script>
+      window.__messages = [];
+      window.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; }
+        observe(target) { setTimeout(() => this.callback([{target, isIntersecting: true}]), 0); }
+        disconnect() {}
+      };
+      window.chrome = {
+        i18n: {detectLanguage(_text, callback) {
+          callback({isReliable: true, languages: [{language: "en", percentage: 100}]});
+        }},
+        runtime: {
+          lastError: null,
+          onMessage: {addListener() {}},
+          sendMessage(message, callback) {
+            window.__messages.push(message);
+            callback({ok: true, translations: (message.paragraphs || []).map(({id}) => ({id, text: `译文-${id}`}))});
+          }
+        }
+      };
+    </script>
+  </head>
+  <body>
+    <main>
+      <article>
+        <p id="large-a"></p>
+        <p id="large-b"></p>
+        <p id="large-c"></p>
+      </article>
+    </main>
+    <script>
+      for (const [id, letter] of [["large-a", "a"], ["large-b", "b"], ["large-c", "c"]]) {
+        document.querySelector(`#${id}`).textContent = `Large ${letter} ${letter.repeat(5100)}`;
+      }
+    </script>
+    <script src="content.js"></script>
+    <script>
+      document.querySelector(".bwt-floating-button").click();
+      setTimeout(() => {
+        const batches = window.__messages.filter(({type}) => type === "BWT_TRANSLATE_BATCH");
+        const passed = batches.length === 3 && batches.every(({paragraphs}) =>
+          paragraphs.length === 1 && paragraphs.reduce((sum, {text}) => sum + text.length, 0) <= 10000
+        );
+        document.body.dataset.test = passed ? "passed" : "failed";
+        document.title = passed ? "batching test passed" : "batching test failed";
+      }, 200);
+    </script>
+  </body>
+</html>

@@ -59,7 +59,7 @@ function createHarness(storageState) {
     // 记录 background 内部请求的等待时长，并压缩到 25ms 内让退避测试保持快速。
     setTimeout: (fn, ms, ...args) => {
       timeoutDelays.push(ms);
-      return setTimeout(fn, Math.min(ms || 0, 25), ...args);
+      return setTimeout(fn, ms >= 30000 ? 100 : Math.min(ms || 0, 25), ...args);
     },
     clearTimeout,
     chrome: {

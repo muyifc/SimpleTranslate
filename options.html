@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>双语网页翻译设置</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">双语网页翻译</p>
+        <h1>设置</h1>
+        <p>管理翻译模型、专用术语和本机数据。</p>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav aria-label="设置分类">
+        <a href="#translation">翻译服务</a>
+        <a href="#glossary-section">术语表</a>
+        <a href="#data">数据管理</a>
+      </nav>
+
+      <main>
+        <section id="translation" aria-labelledby="translation-title">
+          <div class="section-heading">
+            <div>
+              <h2 id="translation-title">翻译服务</h2>
+              <p>最多配置 4 个兼容 OpenAI 接口的模型。</p>
+            </div>
+            <div class="model-actions">
+              <span id="activeCount" aria-live="polite"></span>
+              <button id="addModel" type="button" class="secondary">添加模型</button>
+            </div>
+          </div>
+          <label for="nativeLanguage" class="native-language-field">母语
+            <select id="nativeLanguage">
+              <option value="zh-CN">简体中文</option>
+              <option value="zh-TW">繁體中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="es">Español</option>
+              <option value="pt-BR">Português</option>
+              <option value="ru">Русский</option>
+            </select>
+          </label>
+          <div id="modelConfigs"></div>
+        </section>
+
+        <section id="glossary-section" aria-labelledby="glossary-title">
+          <h2 id="glossary-title">术语表</h2>
+          <p>每行填写一个术语映射，例如 <code>agent=智能体</code>。</p>
+          <label for="glossary" class="visually-hidden">术语表内容</label>
+          <textarea id="glossary" rows="9" spellcheck="false" placeholder="agent=智能体"></textarea>
+        </section>
+
+        <section id="data" aria-labelledby="data-title">
+          <h2 id="data-title">数据管理</h2>
+          <p>导入或导出母语、术语表、站点规则和全部模型配置。</p>
+          <p class="config-warning">导出的 JSON 包含模型 API 地址、模型名称和 API Key，请勿上传、公开或转发给他人。</p>
+          <div class="data-actions">
+            <button id="exportConfig" type="button" class="secondary">导出配置</button>
+            <button id="importConfig" type="button" class="secondary">导入配置</button>
+            <input id="importFile" type="file" accept="application/json,.json" hidden>
+            <button id="clearCache" type="button" class="danger">清空翻译缓存</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="save-bar">
+      <p id="status" role="status" aria-live="polite"></p>
+      <button id="save" type="button">保存设置</button>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>

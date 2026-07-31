@@ -8,31 +8,36 @@
   </head>
   <body>
     <main>
-      <h1>双语网页翻译</h1>
-      <label>
-        API 地址
-        <input id="apiUrl" type="url" placeholder="https://api.openai.com/v1/chat/completions">
-      </label>
-      <label>
-        模型
-        <input id="model" type="text" placeholder="填写兼容接口的模型名">
-      </label>
-      <label>
-        API Key
-        <input id="apiKey" type="password" autocomplete="off" placeholder="保存在本机扩展存储中">
-      </label>
-      <label>
-        术语表
-        <textarea id="glossary" rows="3" placeholder="每行一个术语，例如：agent=智能体"></textarea>
-      </label>
-      <p class="notice">进入可视区域的正文和少量相邻上下文会发送到翻译服务；译文缓存保存在本机。</p>
-      <div class="actions">
-        <button id="translate" type="button">开始按需翻译</button>
-        <button id="cancel" type="button" class="danger">取消翻译</button>
-        <button id="hide" type="button" class="secondary">恢复原文</button>
-        <button id="show" type="button" class="secondary">显示译文</button>
-        <button id="clearCache" type="button" class="secondary">清空缓存</button>
-      </div>
+      <header>
+        <div class="brand">
+          <img src="icons/icon-32.png" alt="">
+          <div>
+            <h1>双语网页翻译</h1>
+            <p id="modelSummary">正在读取配置…</p>
+          </div>
+        </div>
+        <button id="openSettings" type="button" class="settings-button">设置</button>
+      </header>
+
+      <section class="control-card" aria-label="当前页面快捷设置">
+        <label>
+          <span><strong>当前网页翻译</strong><small>按可视区域持续翻译正文</small></span>
+          <input id="translationEnabled" type="checkbox" role="switch" disabled>
+        </label>
+        <label>
+          <span><strong>显示译文</strong><small>隐藏后仅显示网页原文</small></span>
+          <input id="translationsVisible" type="checkbox" role="switch" disabled>
+        </label>
+        <label>
+          <span><strong>显示悬浮球</strong><small>网页右侧的快捷操作入口</small></span>
+          <input id="floatingVisible" type="checkbox" role="switch" disabled>
+        </label>
+        <label>
+          <span><strong>划线翻译</strong><small>选中文本后显示快捷翻译按钮</small></span>
+          <input id="selectionTranslationEnabled" type="checkbox" role="switch" disabled>
+        </label>
+      </section>
+
       <p id="status" role="status" aria-live="polite"></p>
     </main>
     <script src="popup.js"></script>

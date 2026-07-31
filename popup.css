@@ -1,80 +1,150 @@
 :root {
   color-scheme: light dark;
   font: 14px/1.4 system-ui, sans-serif;
+  --accent: #e83e8c;
+  --border: #dbe2ea;
+  --muted: #64748b;
+  --surface: #fff;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 340px;
+  background: #f8fafc;
+  color: #1e293b;
 }
 
 main {
   padding: 16px;
 }
 
+header,
+.brand,
+.control-card label {
+  display: flex;
+  align-items: center;
+}
+
+header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  min-width: 0;
+  gap: 10px;
+}
+
+.brand img {
+  width: 32px;
+  height: 32px;
+}
+
+h1,
+p {
+  margin: 0;
+}
+
 h1 {
-  margin: 0 0 14px;
-  font-size: 18px;
+  font-size: 16px;
 }
 
-label {
-  display: block;
-  margin-top: 10px;
-}
-
-input,
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  margin-top: 4px;
-  padding: 7px 8px;
-  border: 1px solid #8888;
-  border-radius: 6px;
-  font: inherit;
-}
-
-textarea {
-  resize: vertical;
-}
-
-.notice,
-#status {
-  margin: 10px 0 0;
-  color: #666;
+.brand p,
+#status,
+small {
+  color: var(--muted);
   font-size: 12px;
 }
 
-.actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 14px;
+button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
 }
 
-button {
-  padding: 8px;
-  border: 0;
-  border-radius: 6px;
-  background: #2563eb;
-  color: white;
+button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.control-card {
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.control-card label {
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 14px;
   cursor: pointer;
 }
 
-button:first-child {
-  grid-column: 1 / -1;
+.control-card label + label {
+  border-top: 1px solid var(--border);
 }
 
-button.secondary {
-  background: #64748b;
+.control-card span,
+.control-card small {
+  display: block;
 }
 
-button.danger {
-  background: #dc2626;
+.control-card small {
+  margin-top: 2px;
 }
 
-button:disabled {
+input[role="switch"] {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+input[role="switch"]::before {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+  content: "";
+  transition: transform .15s ease;
+}
+
+input[role="switch"]:checked {
+  background: var(--accent);
+}
+
+input[role="switch"]:checked::before {
+  transform: translateX(16px);
+}
+
+input[role="switch"]:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input[role="switch"]:disabled {
   cursor: wait;
-  opacity: .65;
+  opacity: .55;
+}
+
+#status {
+  min-height: 17px;
+  margin-top: 10px;
 }
 
 #status.error {
@@ -82,8 +152,14 @@ button:disabled {
 }
 
 @media (prefers-color-scheme: dark) {
-  .notice,
-  #status {
-    color: #aaa;
+  :root {
+    --border: #334155;
+    --muted: #94a3b8;
+    --surface: #1e293b;
+  }
+
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
   }
 }

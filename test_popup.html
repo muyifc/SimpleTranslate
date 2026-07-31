@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>popup test pending</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand">
+          <img src="icons/icon-32.png" alt="">
+          <div><h1>双语网页翻译</h1><p id="modelSummary"></p></div>
+        </div>
+        <button id="openSettings" type="button" class="settings-button">设置</button>
+      </header>
+      <section class="control-card">
+        <label><span><strong>当前网页翻译</strong><small>按可视区域持续翻译正文</small></span><input id="translationEnabled" type="checkbox" role="switch" disabled></label>
+        <label><span><strong>显示译文</strong><small>隐藏后仅显示网页原文</small></span><input id="translationsVisible" type="checkbox" role="switch" disabled></label>
+        <label><span><strong>显示悬浮球</strong><small>网页右侧的快捷操作入口</small></span><input id="floatingVisible" type="checkbox" role="switch" disabled></label>
+        <label><span><strong>划线翻译</strong><small>选中文本后显示快捷翻译按钮</small></span><input id="selectionTranslationEnabled" type="checkbox" role="switch" disabled></label>
+      </section>
+      <p id="status"></p>
+    </main>
+    <script>
+      window.__messages = [];
+      window.__optionsOpened = false;
+      window.__stored = {selectionTranslationEnabled: true};
+      window.__pageState = {translationEnabled: false, translationsVisible: true, floatingVisible: true};
+      window.chrome = {
+        storage: {local: {
+          get: async () => ({...window.__stored, modelConfigs: [{enabled: true, apiUrl: "https://api.test/v1", model: "fast"}]}),
+          set: async (values) => Object.assign(window.__stored, values),
+        }},
+        tabs: {
+          query: async () => [{id: 1, url: "https://page.test/"}],
+          sendMessage: async (_id, {type}) => {
+            window.__messages.push(type);
+            if (type === "BWT_GET_STATE") return {ok: true, state: {...window.__pageState}};
+            if (type === "BWT_TRANSLATE_PAGE") window.__pageState.translationEnabled = true;
+            if (type === "BWT_CANCEL_TRANSLATION") window.__pageState.translationEnabled = false;
+            if (type === "BWT_SHOW_TRANSLATIONS") window.__pageState.translationsVisible = true;
+            if (type === "BWT_HIDE_TRANSLATIONS") window.__pageState.translationsVisible = false;
+            if (type === "BWT_SHOW_FLOATING") window.__pageState.floatingVisible = true;
+            if (type === "BWT_HIDE_FLOATING") window.__pageState.floatingVisible = false;
+            return {ok: true, message: "ok"};
+          },
+        },
+        scripting: {insertCSS: async () => {}, executeScript: async () => {}},
+        runtime: {openOptionsPage: async () => { window.__optionsOpened = true; }},
+      };
+    </script>
+    <script src="popup.js"></script>
+    <script>
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      (async () => {
+        await wait(30);
+        const translation = document.querySelector("#translationEnabled");
+        const translations = document.querySelector("#translationsVisible");
+        const floating = document.querySelector("#floatingVisible");
+        const selection = document.querySelector("#selectionTranslationEnabled");
+        translation.checked = true;
+        translation.dispatchEvent(new Event("change"));
+        await wait(30);
+        floating.checked = false;
+        floating.dispatchEvent(new Event("change"));
+        await wait(30);
+        selection.checked = false;
+        selection.dispatchEvent(new Event("change"));
+        await wait(30);
+        document.querySelector("#openSettings").click();
+        await wait(10);
+        const passed = translation.checked && translations.checked && !floating.checked && !selection.checked &&
+          !translation.disabled && !selection.disabled && window.__stored.selectionTranslationEnabled === false && document.querySelector("#modelSummary").textContent.includes("1 个模型") &&
+          window.__messages.includes("BWT_GET_STATE") && window.__messages.includes("BWT_TRANSLATE_PAGE") &&
+          window.__messages.includes("BWT_HIDE_FLOATING") && window.__optionsOpened;
+        document.body.dataset.test = passed ? "passed" : "failed";
+        document.title = passed ? "popup test passed" : "popup test failed";
+      })().catch((error) => { document.body.dataset.test = "failed"; document.title = `popup test failed: ${error.message}`; });
+    </script>
+  </body>
+</html>

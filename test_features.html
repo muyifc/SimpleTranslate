@@ -10,6 +10,7 @@
       window.addEventListener("error", (event) => window.__errors.push(event.message));
       window.addEventListener("unhandledrejection", (event) => window.__errors.push(event.reason?.message || String(event.reason)));
       window.__stored = {siteRules: {"": {selector: "#chosen-root"}}};
+      window.__storageChanged = [];
       window.__failOnce = true;
       window.IntersectionObserver = class {
         constructor(callback) { this.callback = callback; this.targets = new Set(); window.__viewportObserver = this; }
@@ -25,13 +26,19 @@
             : {isReliable: true, languages: [{language: "en", percentage: 100}]};
           setTimeout(() => callback(result), text.includes("Delayed") ? 50 : 0);
         }},
-        storage: {local: {
+        storage: {
+          onChanged: {addListener(listener) { window.__storageChanged.push(listener); }},
+          local: {
           async get(keys) {
             if (typeof keys === "string") return {[keys]: window.__stored[keys]};
             const names = Array.isArray(keys) ? keys : Object.keys(keys || {});
             return Object.fromEntries(names.map((name) => [name, window.__stored[name]]));
           },
-          async set(values) { Object.assign(window.__stored, values); }
+          async set(values) {
+            const changes = Object.fromEntries(Object.entries(values).map(([key, newValue]) => [key, {oldValue: window.__stored[key], newValue}]));
+            Object.assign(window.__stored, values);
+            for (const listener of window.__storageChanged) listener(changes, "local");
+          }
         }},
         runtime: {
           lastError: null,
@@ -81,7 +88,12 @@
         const initialTexts = window.__messages.filter(({type}) => type === "BWT_TRANSLATE_BATCH").flatMap(({paragraphs}) => paragraphs.map(({text}) => text));
         const savedRootWorked = initialTexts.includes("First contextual paragraph") && !initialTexts.includes("Ignored main text");
         const shortHeadingWorked = initialTexts.includes("Overview") && document.querySelector("#short-heading + .bwt-translation")?.classList.contains("bwt-translation--done");
-        const contextWorked = window.__messages.some((message) => message.context?.pageTitle === "feature test pending");
+        const contextualMessage = window.__messages.find((message) => message.paragraphs?.some(({text}) => text === "First contextual paragraph"));
+        const contextualParagraph = contextualMessage?.paragraphs.find(({text}) => text === "First contextual paragraph");
+        const contextWorked = contextualMessage?.context?.pageTitle === "feature test pending" &&
+          contextualMessage.context.previousText === "" &&
+          contextualParagraph?.beforeText.includes("Overview") &&
+          contextualParagraph?.afterText.includes("Retry this paragraph");
 
         openMenu();
         document.querySelector('[data-action="retry"]')?.click();
@@ -144,6 +156,24 @@
         await wait(60);
         const shortSelectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：when";
 
+        openMenu();
+        const selectionMenu = document.querySelector('[data-action="selection-toggle"]');
+        const selectionMenuLabelWorked = selectionMenu?.textContent === "禁用划线翻译";
+        selectionMenu?.click();
+        await wait(10);
+        const disabledRange = document.createRange();
+        disabledRange.selectNodeContents(document.querySelector("#selection"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(disabledRange);
+        document.querySelector("#selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(10);
+        const selectionToggleWorked = window.__stored.selectionTranslationEnabled === false && document.querySelector(".bwt-selection-action")?.hidden;
+        openMenu();
+        const selectionMenuEnable = document.querySelector('[data-action="selection-toggle"]');
+        const selectionMenuEnableLabelWorked = selectionMenuEnable?.textContent === "启用划线翻译";
+        selectionMenuEnable?.click();
+        await wait(10);
+
         const delayedRange = document.createRange();
         delayedRange.selectNodeContents(document.querySelector("#delayed-selection"));
         getSelection().removeAllRanges();
@@ -180,7 +210,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

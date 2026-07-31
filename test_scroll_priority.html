@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>scroll priority test pending</title>
+    <link rel="stylesheet" href="content.css">
+    <script>
+      window.__messages = [];
+      window.__pending = new Map();
+      window.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; window.__viewportObserver = this; }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+        trigger(target, isIntersecting) { this.callback([{target, isIntersecting}]); }
+      };
+      window.chrome = {
+        i18n: {detectLanguage(_text, callback) { callback({isReliable: true, languages: [{language: "en", percentage: 100}]}); }},
+        storage: {local: {get: async () => ({siteRules: {}}), set: async () => {}}},
+        runtime: {
+          lastError: null,
+          onMessage: {addListener() {}},
+          sendMessage(message, callback) {
+            window.__messages.push(message);
+            if (message.type === "BWT_CANCEL_REQUESTS") return callback({ok: true});
+            if (message.type === "BWT_CANCEL_REQUEST") {
+              const pending = window.__pending.get(message.requestId);
+              if (pending) {
+                window.__pending.delete(message.requestId);
+                pending({ok: false, error: "翻译已取消"});
+              }
+              return callback({ok: true, cancelled: pending ? 1 : 0});
+            }
+            const texts = message.paragraphs.map(({text}) => text);
+            if (texts.includes("Bottom current paragraph")) {
+              return callback({ok: true, translations: message.paragraphs.map(({id}) => ({id, text: `译文-${id}`}))});
+            }
+            window.__pending.set(message.requestId, callback);
+          }
+        }
+      };
+    </script>
+  </head>
+  <body>
+    <main><article>
+      <p id="passed">Passed paragraph</p>
+      <p id="slow-1">Slow paragraph one</p>
+      <p id="slow-2">Slow paragraph two</p>
+      <p id="slow-3">Slow paragraph three</p>
+      <p id="bottom">Bottom current paragraph</p>
+    </article></main>
+    <script src="content.js"></script>
+    <script>
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      (async () => {
+        document.querySelector(".bwt-floating-button").click();
+        await wait(20);
+
+        const observer = window.__viewportObserver;
+        const passed = document.querySelector("#passed");
+        observer.trigger(passed, true);
+        await wait(30);
+        observer.trigger(passed, false);
+
+        for (const id of ["slow-1", "slow-2", "slow-3"]) {
+          observer.trigger(document.querySelector(`#${id}`), true);
+          await wait(160);
+        }
+        for (const id of ["slow-1", "slow-2", "slow-3"]) observer.trigger(document.querySelector(`#${id}`), false);
+        observer.trigger(document.querySelector("#bottom"), true);
+        await wait(260);
+
+        const translationMessages = window.__messages.filter(({type}) => type === "BWT_TRANSLATE_BATCH");
+        const translatedTexts = translationMessages.flatMap(({paragraphs}) => paragraphs.map(({text}) => text));
+        const cancelled = window.__messages.filter(({type}) => type === "BWT_CANCEL_REQUEST");
+        const bottomDone = document.querySelector("#bottom + .bwt-translation")?.classList.contains("bwt-translation--done");
+        const passedTest = !translatedTexts.includes("Passed paragraph") && cancelled.length >= 3 &&
+          translatedTexts.includes("Bottom current paragraph") && bottomDone;
+        document.body.dataset.test = passedTest ? "passed" : "failed";
+        document.title = passedTest ? "scroll priority test passed" : `scroll priority test failed: translated=${translatedTexts.join("|")}, cancelled=${cancelled.length}`;
+      })().catch((error) => {
+        document.body.dataset.test = "failed";
+        document.title = `scroll priority test failed: ${error.message}`;
+      });
+    </script>
+  </body>
+</html>

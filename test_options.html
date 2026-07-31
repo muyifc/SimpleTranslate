@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>options test pending</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <header class="page-header">
+      <div><p class="eyebrow">双语网页翻译</p><h1>设置</h1><p>管理翻译模型、专用术语和本机数据。</p></div>
+    </header>
+    <div class="layout">
+      <nav aria-label="设置分类">
+        <a href="#translation">翻译服务</a>
+        <a href="#glossary-section">术语表</a>
+        <a href="#data">数据管理</a>
+      </nav>
+      <main>
+        <section id="translation">
+          <div class="section-heading">
+            <div><h2>翻译服务</h2><p>最多配置 4 个兼容 OpenAI 接口的模型。</p></div>
+            <div class="model-actions"><span id="activeCount"></span><button id="addModel" type="button" class="secondary">添加模型</button></div>
+          </div>
+          <label for="nativeLanguage">母语<select id="nativeLanguage"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label>
+          <div id="modelConfigs"></div>
+        </section>
+        <section id="glossary-section"><h2>术语表</h2><p>每行填写一个术语映射。</p><textarea id="glossary"></textarea></section>
+        <section id="data">
+          <h2>数据管理</h2>
+          <p id="configWarning">导出的 JSON 包含模型 API 地址、模型名称和 API Key，请勿上传或转发给他人。</p>
+          <button id="exportConfig" type="button">导出配置</button>
+          <button id="importConfig" type="button">导入配置</button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden>
+          <button id="clearCache" type="button" class="danger">清空翻译缓存</button>
+        </section>
+      </main>
+    </div>
+    <div class="save-bar"><p id="status" role="status" aria-live="polite"></p><button id="save" type="button">保存设置</button></div>
+    <script>
+      window.__stored = {
+        apiUrl: "https://api.test/v1/chat/completions",
+        model: "legacy-model",
+        apiKey: "legacy-secret",
+        glossary: "agent=智能体",
+        nativeLanguage: "zh-CN"
+      };
+      window.__permissionRequests = [];
+      window.__messages = [];
+      window.__downloads = [];
+      window.__confirms = [];
+      window.confirm = (message) => { window.__confirms.push(message); return true; };
+      URL.createObjectURL = (blob) => { window.__downloads.push(blob); return "blob:test"; };
+      URL.revokeObjectURL = () => {};
+      window.chrome = {
+        storage: {local: {
+          get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map((key) => [key, window.__stored[key]])),
+          set: async (values) => Object.assign(window.__stored, values),
+        }},
+        permissions: {request: async ({origins}) => { window.__permissionRequests.push(origins); return true; }},
+        runtime: {sendMessage: async (message) => { window.__messages.push(message); return {ok: true}; }}
+      };
+    </script>
+    <script src="options.js"></script>
+    <script>
+      const wait = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (check) => {
+        for (let attempt = 0; attempt < 50 && !check(); attempt += 1) await wait(10);
+      };
+      const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+      (async () => {
+        await wait();
+        let cards = [...document.querySelectorAll(".model-config")];
+        assert(cards.length === 1, "legacy 配置应迁移为一个模型");
+        assert(cards[0].querySelector('[data-field="model"]').value === "legacy-model", "legacy 模型未加载");
+        assert(document.querySelector("#glossary").value === "agent=智能体", "术语表未加载");
+        assert(document.querySelector("#nativeLanguage").value === "zh-CN", "母语未加载");
+
+        document.querySelector("#addModel").click();
+        cards = [...document.querySelectorAll(".model-config")];
+        assert(cards.length === 2, "应能添加第二个模型");
+        const second = cards[1];
+        second.querySelector('[data-field="name"]').value = "质量模型";
+        second.querySelector('[data-field="apiUrl"]').value = "https://api.test/other";
+        second.querySelector('[data-field="model"]').value = "quality";
+        second.querySelector('[data-field="apiKey"]').value = "secret-2";
+        document.querySelector("#nativeLanguage").value = "en";
+
+        document.querySelector("#save").click();
+        await wait(40);
+        assert(window.__stored.modelConfigs?.length === 2, "保存应写入两个模型");
+        assert(window.__stored.modelConfigs[1].model === "quality", "第二个模型保存失败");
+        assert(window.__stored.glossary === "agent=智能体", "术语表保存失败");
+        assert(window.__stored.nativeLanguage === "en", "母语保存失败");
+        assert(window.__permissionRequests.length === 1, "应只请求一次权限");
+        assert(window.__permissionRequests[0].length === 1, "同源 API 权限应去重");
+        assert(window.__permissionRequests[0][0] === "https://api.test/*", "权限来源错误");
+        assert(document.querySelector("#status").textContent.includes("已保存"), "缺少保存成功状态");
+
+        document.querySelector("#exportConfig").click();
+        await wait();
+        const exported = JSON.parse(await window.__downloads[0].text());
+        assert(exported.format === "bilingual-web-translation-settings", "导出格式标识错误");
+        assert(exported.settings.modelConfigs[1].apiKey === "secret-2", "导出应包含模型 API Key");
+        assert(exported.settings.nativeLanguage === "en", "导出应包含母语");
+        assert(window.__confirms[0].includes("API Key") && window.__confirms[0].includes("请勿上传"), "导出前应提示敏感信息风险");
+
+        const imported = new File([JSON.stringify({
+          format: "bilingual-web-translation-settings",
+          version: 1,
+          settings: {
+            nativeLanguage: "zh-CN",
+            glossary: "browser=浏览器",
+            modelConfigs: [{id: "imported", name: "导入模型", apiUrl: "https://import.test/v1/chat/completions", model: "import-model", apiKey: "import-secret", enabled: true}],
+            siteRules: {"example.com": {disabled: true}}
+          }
+        })], "settings.json", {type: "application/json"});
+        Object.defineProperty(document.querySelector("#importFile"), "files", {configurable: true, value: [imported]});
+        document.querySelector("#importFile").dispatchEvent(new Event("change"));
+        await waitFor(() => document.querySelector('[data-field="model"]')?.value === "import-model");
+        assert(window.__stored.modelConfigs[0].id !== "imported", "读取文件后不应在缺少用户手势时申请权限或写入配置");
+        assert(document.querySelector("#status").textContent.includes("保存设置"), "读取文件后应提示点击保存完成导入");
+        document.querySelector("#save").click();
+        await waitFor(() => window.__stored.modelConfigs?.[0]?.id === "imported");
+        assert(window.__stored.modelConfigs[0].apiKey === "import-secret", "导入应恢复模型 API Key");
+        assert(window.__stored.nativeLanguage === "zh-CN", "导入应恢复母语");
+        assert(window.__stored.siteRules["example.com"].disabled, "导入应恢复站点规则");
+        assert(document.querySelector("#status").textContent.includes("已导入"), "缺少导入成功状态");
+
+        document.querySelector("#clearCache").click();
+        await wait();
+        assert(window.__messages.some(({type}) => type === "BWT_CLEAR_CACHE"), "未发送清缓存消息");
+
+        document.body.dataset.test = "passed";
+        document.title = "options test passed";
+      })().catch((error) => {
+        document.body.dataset.test = "failed";
+        document.title = `options test failed: ${error.message}`;
+      });
+    </script>
+  </body>
+</html>

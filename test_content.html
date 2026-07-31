@@ -93,7 +93,8 @@
         let contextMenuState = false;
         let restoreOriginalState = false;
         let showTranslationsState = false;
-        let onlyEnglishMainContent = false;
+        let floatingVisibilityState = false;
+        let onlyNonNativeMainContent = false;
         let cancelledBeforeRestart = false;
         let immediateRestartState = false;
         let formattedListState = false;
@@ -115,20 +116,20 @@
         setTimeout(() => {
           waitingForViewport =
             window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH").length === 0 &&
-            floatingButton?.textContent === "…" &&
+            floatingButton?.textContent === "0/…" &&
             floatingButton.dataset.status === "translating" &&
-            floatingButton.getAttribute("aria-label") === "正在翻译，点击停止";
+            floatingButton.getAttribute("aria-label") === "正在分析可见内容，点击停止";
         }, 60);
 
         setTimeout(() => {
           const initialBatches = window.__messages.filter((message) => message.type === "BWT_TRANSLATE_BATCH");
           initialVisibleOnly =
-            document.querySelectorAll(".bwt-translation--pending").length === 7 &&
+            document.querySelectorAll(".bwt-translation--pending").length === 8 &&
             !document.querySelector("#below + .bwt-translation") &&
             initialBatches.length === 3 &&
-            floatingButton?.textContent === "…" &&
+            floatingButton?.textContent === "0/8" &&
             floatingButton.dataset.status === "translating";
-        }, 130);
+        }, 180);
 
         setTimeout(() => {
           initialErrorState = floatingButton?.textContent === "!" && floatingButton.dataset.status === "error";
@@ -139,7 +140,7 @@
             floatingMenu?.matches(":popover-open") &&
             menuStyle.position === "fixed" &&
             menuStyle.right === "82px" &&
-            ["取消翻译", "重试失败", "选择翻译区域", "清除区域规则", "禁用此网站", "恢复原文", "显示译文"].every((label) => menuItems.some((item) => item.textContent === label));
+            ["取消翻译", "重试失败", "选择翻译区域", "清除区域规则", "禁用此网站", "恢复原文", "显示译文", "隐藏悬浮球"].every((label) => menuItems.some((item) => item.textContent === label));
           floatingMenu?.querySelector('[data-action="original"]')?.click();
           restoreOriginalState =
             document.documentElement.classList.contains("bwt-show-original") &&
@@ -149,23 +150,38 @@
           showTranslationsState =
             !document.documentElement.classList.contains("bwt-show-original") &&
             !floatingMenu?.matches(":popover-open");
+          floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+          floatingMenu?.querySelector('[data-action="hide-floating"]')?.click();
+          const hiddenByMenu = getComputedStyle(floatingButton).display === "none";
+          let shownByPopup = false;
+          window.__contentListener?.({type: "BWT_SHOW_FLOATING"}, {}, (response) => {
+            shownByPopup = response?.ok && getComputedStyle(floatingButton).display !== "none";
+          });
+          let hiddenByPopup = false;
+          window.__contentListener?.({type: "BWT_HIDE_FLOATING"}, {}, (response) => {
+            hiddenByPopup = response?.ok && getComputedStyle(floatingButton).display === "none";
+          });
+          window.__contentListener?.({type: "BWT_SHOW_FLOATING"}, {}, () => {});
+          floatingVisibilityState = hiddenByMenu && shownByPopup && hiddenByPopup && getComputedStyle(floatingButton).display !== "none";
           for (const id of ["#below", "#below-2", "#below-3"]) window.__viewportObserver?.trigger(document.querySelector(id));
           setTimeout(() => {
-            enteredViewportState = floatingButton?.textContent === "…" && floatingButton.dataset.status === "translating";
+            enteredViewportState = /^\d+\/\d+$/.test(floatingButton?.textContent || "") && floatingButton.dataset.status === "translating";
             floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
             floatingMenu?.querySelector('[data-action="cancel"]')?.click();
             cancelledBeforeRestart =
               ["#below", "#below-2", "#below-3"].every((id) => document.querySelector(`${id} + .bwt-translation`)?.classList.contains("bwt-translation--cancelled")) &&
               floatingButton?.dataset.status === "cancelled";
             floatingButton?.click();
-            for (const id of ["#below", "#below-2", "#below-3"]) window.__viewportObserver?.trigger(document.querySelector(id));
+            setTimeout(() => {
+              for (const id of ["#below", "#below-2", "#below-3"]) window.__viewportObserver?.trigger(document.querySelector(id));
+            });
             setTimeout(() => {
               immediateRestartState =
                 window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Slow"))).length === 2 &&
                 floatingButton?.dataset.status === "translating";
-            }, 70);
-          }, 50);
-        }, 270);
+            }, 100);
+          }, 90);
+        }, 340);
 
         setTimeout(() => {
           const translations = [...document.querySelectorAll(".bwt-translation")];
@@ -180,14 +196,14 @@
           formattedListState =
             sentTexts.includes("Translation review:\n1. Clarity and fluidity\n2. Terminology accuracy") &&
             document.querySelector("#standalone + .bwt-translation")?.textContent === "翻译评测：\n1. 清晰度和流畅性。\n2. 术语准确性。";
-          onlyEnglishMainContent =
+          onlyNonNativeMainContent =
             !document.querySelector("#chinese + .bwt-translation") &&
-            !document.querySelector("#french + .bwt-translation") &&
+            document.querySelector("#french + .bwt-translation")?.classList.contains("bwt-translation--done") &&
             !document.querySelector("#sidebar + .bwt-translation") &&
             !document.querySelector("#main-edge + .bwt-translation") &&
             !document.querySelector("#related-article + .bwt-translation") &&
-            !sentTexts.some((text) => text.includes("中文") || text.startsWith("Bonjour") || text.includes("sidebar") || text.includes("outside the article") || text.includes("article card")) &&
-            !window.__detectedTexts.some((text) => text.includes("中文")) &&
+            !sentTexts.some((text) => text.includes("中文") || text.includes("sidebar") || text.includes("outside the article") || text.includes("article card")) &&
+            window.__detectedTexts.some((text) => text.includes("中文")) &&
             window.__detectedTexts.some((text) => text.startsWith("Bonjour")) &&
             !window.__detectedTexts.some((text) => text.includes("sidebar") || text.includes("outside the article") || text.includes("article card"));
           const checks = {
@@ -199,16 +215,17 @@
             contextMenuState,
             restoreOriginalState,
             showTranslationsState,
-            onlyEnglishMainContent,
+            floatingVisibilityState,
+            onlyNonNativeMainContent,
             cancelledBeforeRestart,
             immediateRestartState,
             formattedListState,
             batchingWorked,
-            paragraphCount: sentParagraphs.length === 14,
-            languages: batches.every((message) => message.sourceLanguage === "en"),
+            paragraphCount: sentParagraphs.length === 15,
+            languages: batches.every((message) => ["en", "fr"].includes(message.sourceLanguage)),
             cancellationCount: cancellations.length === 1,
             concurrency: window.__maxActiveRequests <= 3,
-            doneCount: translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 9,
+            doneCount: translations.filter((node) => node.classList.contains("bwt-translation--done")).length === 10,
             errorCount: translations.filter((node) => node.classList.contains("bwt-translation--error")).length === 1,
             belowDone: belowTranslations.every((node) => node?.classList.contains("bwt-translation--done")),
             belowText: belowTranslations[0].textContent === "译文：Slow below viewport",
@@ -216,7 +233,7 @@
             originalText: document.querySelector("#paragraph").textContent === "Hello world",
           };
           window.__coreChecks = checks;
-        }, 800);
+        }, 960);
 
         setTimeout(() => {
           document.querySelector("#failure + .bwt-translation")?.remove();
@@ -225,20 +242,22 @@
           setTimeout(() => {
             floatingButton?.click();
             floatingButton?.click();
-            for (const id of ["#rapid-a", "#rapid-b"]) window.__viewportObserver?.trigger(document.querySelector(id));
             setTimeout(() => {
-              const earlyMessages = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Rapid restart")));
+              for (const id of ["#rapid-a", "#rapid-b"]) window.__viewportObserver?.trigger(document.querySelector(id));
               setTimeout(() => {
-                const rapidMessages = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Rapid restart")));
-                fastRestartTimerWorked = earlyMessages.length === 0 && rapidMessages.length === 1 && rapidMessages[0].paragraphs.length === 2;
-                const checks = {...window.__coreChecks, fastRestartTimerWorked};
-                const passed = Object.values(checks).every(Boolean);
-                document.body.dataset.test = passed ? "passed" : "failed";
-                document.title = passed ? "content test passed" : `content test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}`;
-              }, 30);
-            }, 20);
+                const earlyMessages = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Rapid restart")));
+                setTimeout(() => {
+                  const rapidMessages = window.__messages.filter((message) => message.paragraphs?.some(({text}) => text.startsWith("Rapid restart")));
+                  fastRestartTimerWorked = earlyMessages.length === 0 && rapidMessages.length === 1 && rapidMessages[0].paragraphs.length === 2;
+                  const checks = {...window.__coreChecks, fastRestartTimerWorked};
+                  const passed = Object.values(checks).every(Boolean);
+                  document.body.dataset.test = passed ? "passed" : "failed";
+                  document.title = passed ? "content test passed" : `content test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}`;
+                }, 70);
+              }, 20);
+            });
           }, 15);
-        }, 820);
+        }, 990);
       });
     </script>
   </body>

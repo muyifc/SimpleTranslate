@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>multi model test pending</title>
+    <link rel="stylesheet" href="content.css">
+    <script>
+      window.__messages = [];
+      window.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; window.__viewportObserver = this; }
+        observe(target) { if (target.dataset.manual !== "true") setTimeout(() => this.trigger(target, true), 0); }
+        disconnect() {}
+        trigger(target, isIntersecting) { this.callback([{target, isIntersecting}]); }
+      };
+      window.chrome = {
+        i18n: {detectLanguage(text, callback) { callback({isReliable: true, languages: [{language: text.startsWith("Bonjour") ? "fr" : "en", percentage: 100}]}); }},
+        runtime: {
+          lastError: null,
+          onMessage: {addListener() {}},
+          sendMessage(message, callback) {
+            window.__messages.push(message);
+            if (["BWT_CANCEL_REQUEST", "BWT_CANCEL_REQUESTS"].includes(message.type)) return callback({ok: true});
+            const paragraphs = message.paragraphs || [];
+            const staleRetry = paragraphs.some(({text}) => text.startsWith("Bonjour stale retry"));
+            const attempt = staleRetry ? (window.__staleRetryAttempts = (window.__staleRetryAttempts || 0) + 1) : 0;
+            setTimeout(() => callback({ok: true, translations: paragraphs.map(({id}) => ({id, variants: [
+              {modelId: "fast", modelName: "快速模型", text: `快速-${id}`},
+              attempt === 1
+                ? {modelId: "quality", modelName: "质量模型", error: "旧请求失败"}
+                : {modelId: "quality", modelName: "质量模型", text: `质量-${id}`},
+            ]}))}), staleRetry ? attempt === 1 ? 100 : 160 : paragraphs.some(({text}) => text.startsWith("Slow")) ? 160 : 20);
+          }
+        },
+        storage: {local: {get: async () => ({siteRules: {}}), set: async () => {}}}
+      };
+    </script>
+  </head>
+  <body>
+    <main><article>
+      <p id="paragraph">A paragraph for comparison</p>
+      <p>Second comparison paragraph</p>
+      <p>Third comparison paragraph</p>
+      <p>Slow fourth comparison paragraph</p>
+      <p id="stale-retry" data-manual="true">Bonjour stale retry paragraph</p>
+    </article></main>
+    <script src="content.js"></script>
+    <script>
+      document.querySelector(".bwt-floating-button").click();
+      let middleProgress = false;
+      let corePassed = false;
+      setTimeout(() => {
+        const ball = document.querySelector(".bwt-floating-button");
+        middleProgress = ball?.textContent === "3/4" && ball.style.getPropertyValue("--bwt-progress") === "75%";
+      }, 110);
+      setTimeout(() => {
+        const node = document.querySelector("#paragraph + .bwt-translation");
+        const ball = document.querySelector(".bwt-floating-button");
+        const variants = [...(node?.querySelectorAll(".bwt-translation__variant") || [])];
+        corePassed = middleProgress && variants.length === 2 && variants[0].textContent.includes("快速模型") && variants[1].textContent.includes("质量模型") &&
+          variants[0].textContent.includes("快速-p-1") && variants[1].textContent.includes("质量-p-1") &&
+          ball?.textContent === "✓" && getComputedStyle(ball).getPropertyValue("--bwt-progress").trim() === "100%";
+        const paragraph = document.querySelector("#stale-retry");
+        window.__viewportObserver?.trigger(paragraph, true);
+        setTimeout(() => {
+          window.__viewportObserver?.trigger(paragraph, false);
+          setTimeout(() => window.__viewportObserver?.trigger(paragraph, true), 10);
+        }, 70);
+      }, 260);
+      setTimeout(() => {
+        const retried = document.querySelector("#stale-retry + .bwt-translation");
+        const ball = document.querySelector(".bwt-floating-button");
+        const retryVariants = [...(retried?.querySelectorAll(".bwt-translation__variant") || [])];
+        const staleFailureCleared = retried?.classList.contains("bwt-translation--done") &&
+          retryVariants.length === 2 && !retried.querySelector(".bwt-translation__variant--error") && !retried.textContent.includes("旧请求失败");
+        const passed = corePassed && staleFailureCleared && ball?.textContent === "✓" && getComputedStyle(ball).getPropertyValue("--bwt-progress").trim() === "100%";
+        document.body.dataset.test = passed ? "passed" : "failed";
+        document.title = passed ? "multi model test passed" : `multi model test failed: ${corePassed ? "stale failure remained" : "existing checks"}`;
+      }, 650);
+    </script>
+  </body>
+</html>

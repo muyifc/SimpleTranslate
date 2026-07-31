@@ -1,0 +1,24 @@
+# Generated files
+release/
+logs/
+*.log
+
+# Dependencies
+node_modules/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

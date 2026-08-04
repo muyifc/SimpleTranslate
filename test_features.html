@@ -52,6 +52,9 @@
                 : {ok: true, interpretation: `通俗解释：${message.text}`}
               ), message.text.includes("Delayed interpretation") ? 80 : 20);
             }
+            if (message.type === "BWT_GUIDE_ARTICLE") {
+              return setTimeout(() => callback({ok: true, guide: "文章摘要\n这是一篇测试文章。\n\n文章脉络\n1. 背景\n2. 结论\n\n关键名词\n智能体：自主执行任务的系统。"}), 20);
+            }
             const paragraphs = message.paragraphs;
             setTimeout(() => {
               const hasRetry = paragraphs.some(({text}) => text.includes("Retry"));
@@ -103,6 +106,20 @@
           contextualMessage.context.previousText === "" &&
           contextualParagraph?.beforeText.includes("Overview") &&
           contextualParagraph?.afterText.includes("Retry this paragraph");
+
+        openMenu();
+        document.querySelector('[data-action="article-guide"]')?.click();
+        await wait(60);
+        const guideMessage = window.__messages.find(({type}) => type === "BWT_GUIDE_ARTICLE");
+        const guidePanel = document.querySelector(".bwt-article-guide");
+        const articleGuideWorked = guideMessage?.text.includes("Overview") &&
+          guideMessage.text.includes("First contextual paragraph") &&
+          !guideMessage.text.includes("Ignored main text") &&
+          guideMessage.context?.pageTitle === "feature test pending" &&
+          !guidePanel?.hidden &&
+          guidePanel?.querySelector(".bwt-article-guide__body")?.textContent.includes("文章摘要");
+        guidePanel?.querySelector('[data-action="close-article-guide"]')?.click();
+        const articleGuideCloseWorked = guidePanel?.hidden;
 
         openMenu();
         document.querySelector('[data-action="retry"]')?.click();
@@ -269,7 +286,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, nativeInterpretationWorked, interpretationErrorWorked, interpretationCancelWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, articleGuideWorked, articleGuideCloseWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, nativeInterpretationWorked, interpretationErrorWorked, interpretationCancelWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

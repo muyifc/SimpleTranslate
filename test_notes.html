@@ -1,0 +1,155 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <base href="https://example.test/articles/agents">
+    <title>notes test pending</title>
+    <link rel="stylesheet" href="content.css">
+    <script>
+      window.__stored = {siteRules: {}, nativeLanguage: "zh-CN"};
+      window.__messages = [];
+      window.confirm = () => true;
+      window.IntersectionObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      };
+      window.chrome = {
+        i18n: {detectLanguage(_text, callback) {
+          setTimeout(() => callback({isReliable: true, languages: [{language: "en", percentage: 100}]}), 0);
+        }},
+        storage: {
+          onChanged: {addListener() {}},
+          local: {
+            async get(keys) {
+              if (typeof keys === "string") return {[keys]: window.__stored[keys]};
+              const names = Array.isArray(keys) ? keys : Object.keys(keys || {});
+              return Object.fromEntries(names.map((name) => [name, window.__stored[name]]));
+            },
+            async set(values) { Object.assign(window.__stored, values); }
+          }
+        },
+        runtime: {
+          lastError: null,
+          onMessage: {addListener() {}},
+          sendMessage(message, callback) {
+            window.__messages.push(message);
+            if (message.type === "BWT_INTERPRET_TEXT") {
+              return setTimeout(() => callback({ok: true, interpretation: `通俗解释：${message.text}`}), 10);
+            }
+            if (message.type === "BWT_GUIDE_ARTICLE") {
+              return setTimeout(() => callback({ok: true, guide: "文章摘要\n智能体会规划、执行并检查结果。"}), 10);
+            }
+            if (message.type === "BWT_CANCEL_REQUESTS") return callback({ok: true, cancelled: 0});
+            callback({ok: true, translations: (message.paragraphs || []).map(({id, text}) => ({id, text: `译文：${text}`}))});
+          }
+        }
+      };
+    </script>
+  </head>
+  <body>
+    <main><article>
+      <h1>Autonomous agents</h1>
+      <p id="selection">Agents plan tasks and call tools.</p>
+      <p id="new-selection">Agents verify their results.</p>
+    </article></main>
+    <script src="content.js"></script>
+    <script>
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const select = (selector) => {
+        const range = document.createRange();
+        range.selectNodeContents(document.querySelector(selector));
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        document.querySelector(selector).dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+      };
+      const openMenu = () => document.querySelector(".bwt-floating-button")
+        ?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+
+      (async () => {
+        select("#selection");
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        await wait(40);
+        const quickSave = document.querySelector('[data-action="save-quick-note"]');
+        quickSave?.click();
+        await wait(20);
+        const interpretation = window.__stored.readingNotesV1?.[0];
+        const interpretationSaved = window.__stored.readingNotesV1?.length === 1 &&
+          interpretation?.type === "interpretation" &&
+          interpretation?.title === "notes test pending" &&
+          interpretation?.url === "https://example.test/articles/agents" &&
+          interpretation?.sourceText === "Agents plan tasks and call tools." &&
+          interpretation?.content === "通俗解释：Agents plan tasks and call tools." &&
+          quickSave?.textContent === "已保存" && quickSave.disabled;
+
+        openMenu();
+        document.querySelector('[data-action="article-guide"]')?.click();
+        await wait(40);
+        const guideSave = document.querySelector('[data-action="save-article-guide"]');
+        guideSave?.click();
+        await wait(20);
+        const articleGuide = window.__stored.readingNotesV1?.find(({type}) => type === "article-guide");
+        const guideSaved = window.__stored.readingNotesV1?.length === 2 &&
+          articleGuide?.sourceText === "" && articleGuide?.content.includes("文章摘要") &&
+          guideSave?.textContent === "已保存" && guideSave.disabled;
+
+        openMenu();
+        document.querySelector('[data-action="reading-notes"]')?.click();
+        await wait(20);
+        const drawer = document.querySelector(".bwt-article-guide");
+        const cards = [...document.querySelectorAll("[data-note-id]")];
+        const listWorked = !drawer?.hidden &&
+          drawer?.querySelector("h2")?.textContent === "阅读笔记" && cards.length === 2 &&
+          cards[0].dataset.noteId === articleGuide.id;
+
+        document.querySelector(`[data-note-id="${interpretation.id}"]`)?.click();
+        await wait(10);
+        const editor = document.querySelector(".bwt-note-editor");
+        editor.value = "修改后的解释";
+        document.querySelector('[data-action="save-note-edit"]')?.click();
+        await wait(20);
+        const edited = window.__stored.readingNotesV1.find(({id}) => id === interpretation.id);
+        const sourceLink = document.querySelector(".bwt-note-source-link");
+        const editWorked = edited?.content === "修改后的解释" && edited.updatedAt >= edited.createdAt &&
+          sourceLink?.href === "https://example.test/articles/agents" && sourceLink.target === "_blank";
+
+        document.querySelector('[data-action="delete-note"]')?.click();
+        await wait(20);
+        const deleteWorked = window.__stored.readingNotesV1?.length === 1 &&
+          !window.__stored.readingNotesV1.some(({id}) => id === interpretation.id) &&
+          document.querySelectorAll("[data-note-id]").length === 1;
+
+        const now = Date.now() - 10_000;
+        window.__stored.readingNotesV1 = Array.from({length: 300}, (_, index) => ({
+          id: `old-${index}`,
+          type: "interpretation",
+          title: `Old ${index}`,
+          url: "https://example.test/old",
+          sourceText: "old",
+          content: "old",
+          createdAt: now + index,
+          updatedAt: now + index,
+        }));
+        document.querySelector('[data-action="close-article-guide"]')?.click();
+        select("#new-selection");
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        await wait(40);
+        document.querySelector('[data-action="save-quick-note"]')?.click();
+        await wait(20);
+        const limitWorked = window.__stored.readingNotesV1?.length === 300 &&
+          window.__stored.readingNotesV1.some(({sourceText}) => sourceText === "Agents verify their results.") &&
+          !window.__stored.readingNotesV1.some(({id}) => id === "old-0");
+
+        const checks = {interpretationSaved, guideSaved, listWorked, editWorked, deleteWorked, limitWorked};
+        document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
+        document.title = document.body.dataset.test === "passed"
+          ? "notes test passed"
+          : `notes test failed: ${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(",")}`;
+      })().catch((error) => {
+        document.body.dataset.test = "failed";
+        document.title = `notes test failed: ${error.message}`;
+      });
+    </script>
+  </body>
+</html>

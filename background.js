@@ -15,6 +15,12 @@ let cacheGeneration = 0;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
+  if (message.type === "BWT_OPEN_READING_NOTES") {
+    chrome.tabs.create({url: chrome.runtime.getURL("notes.html")})
+      .then(() => sendResponse({ok: true}))
+      .catch((error) => sendResponse({ok: false, error: error.message || String(error)}));
+    return true;
+  }
   if (message.type === "BWT_CLEAR_CACHE") {
     cacheGeneration += 1;
     cachePromise = Promise.resolve({});

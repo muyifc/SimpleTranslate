@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>阅读笔记 - 双语网页翻译</title>
+    <link rel="stylesheet" href="options.css">
+    <link rel="stylesheet" href="notes.css">
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">双语网页翻译</p>
+        <h1>阅读笔记</h1>
+        <p>本机保存的划词解读与文章导读。</p>
+      </div>
+    </header>
+
+    <main class="notes-layout">
+      <section class="notes-list-panel" aria-labelledby="notes-list-title">
+        <h2 id="notes-list-title">全部笔记</h2>
+        <div id="noteList"></div>
+      </section>
+      <section class="note-detail-panel" aria-labelledby="note-detail-title">
+        <h2 id="note-detail-title">笔记详情</h2>
+        <div id="noteDetail"></div>
+      </section>
+    </main>
+
+    <p id="status" class="notes-status" role="status" aria-live="polite"></p>
+    <script src="notes.js"></script>
+  </body>
+</html>

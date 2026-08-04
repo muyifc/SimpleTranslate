@@ -1,0 +1,156 @@
+.notes-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 22px;
+  width: min(1180px, calc(100% - 64px));
+  margin: 32px auto 84px;
+}
+
+.notes-list-panel,
+.note-detail-panel {
+  min-width: 0;
+}
+
+#noteList {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.note-card {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 13px;
+  border: 1px solid #dce2eb;
+  background: #fff;
+  color: #14213d;
+  text-align: left;
+}
+
+.note-card[aria-current="true"] {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px #e0f2fe;
+}
+
+.note-card__title {
+  font-weight: 700;
+}
+
+.note-card__meta,
+.note-card__excerpt,
+.note-meta {
+  color: #647087;
+}
+
+.note-card__meta {
+  font-size: 12px;
+}
+
+.note-card__excerpt {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+#noteDetail {
+  margin-top: 18px;
+}
+
+.note-detail-heading {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.note-source {
+  margin: 18px 0;
+  padding: 12px 14px;
+  border-left: 3px solid #38bdf8;
+  background: #eff6ff;
+  color: #38506d;
+  white-space: pre-wrap;
+}
+
+#noteEditor {
+  min-height: 360px;
+  margin-top: 18px;
+  font-family: system-ui, sans-serif;
+}
+
+.note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.note-actions a {
+  padding: 9px 16px;
+  border-radius: 8px;
+  background: #e7f1fb;
+  color: #1e3a5f;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.empty-state {
+  margin: 18px 0 0;
+  color: #647087;
+}
+
+.notes-status {
+  position: fixed;
+  right: 24px;
+  bottom: 20px;
+  max-width: min(520px, calc(100% - 48px));
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #dcfce7;
+  box-shadow: 0 8px 24px #164e6320;
+}
+
+.notes-status:empty {
+  display: none;
+}
+
+.notes-status.error {
+  background: #fee2e2;
+  color: #b42318;
+}
+
+@media (max-width: 800px) {
+  .notes-layout {
+    grid-template-columns: 1fr;
+    width: min(100% - 32px, 680px);
+  }
+
+  #noteEditor {
+    min-height: 260px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .note-card {
+    border-color: #2a405d;
+    background: #121d2f;
+    color: #e6eef8;
+  }
+
+  .note-card[aria-current="true"] {
+    box-shadow: 0 0 0 2px #164e63;
+  }
+
+  .note-card__meta,
+  .note-card__excerpt,
+  .note-meta,
+  .empty-state {
+    color: #9cb0c8;
+  }
+
+  .note-source {
+    background: #16283d;
+    color: #c8d0dd;
+  }
+}

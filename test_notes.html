@@ -7,16 +7,7 @@
     <script>
       window.__stored = {siteRules: {}, nativeLanguage: "zh-CN"};
       window.__messages = [];
-      window.__opened = [];
-      window.__shadowRoots = new WeakMap();
-      const nativeAttachShadow = Element.prototype.attachShadow;
-      Element.prototype.attachShadow = function(options) {
-        const root = nativeAttachShadow.call(this, options);
-        window.__shadowRoots.set(this, root);
-        return root;
-      };
       window.confirm = () => true;
-      window.open = (...args) => window.__opened.push(args);
       window.IntersectionObserver = class {
         observe() {}
         unobserve() {}
@@ -108,7 +99,7 @@
         document.querySelector('[data-action="reading-notes"]')?.click();
         await wait(20);
         const pageOpenWorked = window.__messages.some(({type}) => type === "BWT_OPEN_READING_NOTES") &&
-          document.querySelector(".bwt-article-guide")?.hidden;
+          !document.querySelector("[data-bwt-notes]");
 
         const now = Date.now() - 10_000;
         window.__stored.readingNotesV1 = Array.from({length: 300}, (_, index) => ({

@@ -64,6 +64,16 @@
 
         const editor = document.querySelector("#noteEditor");
         const save = document.querySelector('[data-action="save-note"]');
+        window.__stored.readingNotesV1.push({
+          id: "concurrent",
+          type: "interpretation",
+          title: "阅读期间新增",
+          url: "https://example.test/concurrent",
+          sourceText: "concurrent source",
+          content: "并发新增内容",
+          createdAt: now,
+          updatedAt: now,
+        });
         editor.value = "第一次修改";
         editor.dispatchEvent(new Event("input", {bubbles: true}));
         save.click();
@@ -73,6 +83,8 @@
         save.click();
         await wait();
         assert(window.__stored.readingNotesV1.find(({id}) => id === "newest")?.content === "第二次修改", "同一详情应支持连续保存");
+        assert(window.__stored.readingNotesV1.some(({id}) => id === "concurrent"), "保存不应覆盖阅读期间新增的笔记");
+        assert(editor.getAttribute("aria-label") === "笔记正文", "正文编辑器缺少可访问名称");
 
         window.__failWrite = true;
         editor.value = "不应写入";

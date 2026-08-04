@@ -67,6 +67,7 @@ function createHarness(storageState) {
   let cacheWrites = 0;
   const requests = [];
   const timeoutDelays = [];
+  const openedTabs = [];
   const context = {
     URL,
     Set,
@@ -84,7 +85,11 @@ function createHarness(storageState) {
     },
     clearTimeout,
     chrome: {
-      runtime: {onMessage: {addListener(fn) { listener = fn; }}},
+      runtime: {
+        getURL: (path) => `chrome-extension://test/${path}`,
+        onMessage: {addListener(fn) { listener = fn; }},
+      },
+      tabs: {create: async (options) => { openedTabs.push(options); return {id: openedTabs.length}; }},
       storage: {local: {
         get: async (keys) => storageGet(storageState, keys),
         set: (values) => new Promise((resolve) => {
@@ -159,6 +164,7 @@ function createHarness(storageState) {
     timeoutDelays,
     requests,
     setFetchMode(mode) { fetchMode = mode; },
+    openedTabs,
     send(message, sender = {tab: {id: 7}}) {
       return new Promise((resolve) => {
         const handled = listener(message, sender, resolve);
@@ -182,6 +188,13 @@ const tests = [];
 function test(name, run) {
   tests.push({name, run});
 }
+
+test("opens the standalone reading notes page", async () => {
+  const harness = createHarness(settings());
+  const response = await harness.send({type: "BWT_OPEN_READING_NOTES"});
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), {ok: true});
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.openedTabs)), [{url: "chrome-extension://test/notes.html"}]);
+});
 
 async function waitFor(check, message) {
   for (let attempt = 0; attempt < 100; attempt += 1) {

@@ -49,6 +49,7 @@
             if (message.type === "BWT_GUIDE_ARTICLE") {
               return setTimeout(() => callback({ok: true, guide: "文章摘要\n智能体会规划、执行并检查结果。"}), 10);
             }
+            if (message.type === "BWT_OPEN_READING_NOTES") return callback({ok: true});
             if (message.type === "BWT_CANCEL_REQUESTS") return callback({ok: true, cancelled: 0});
             callback({ok: true, translations: (message.paragraphs || []).map(({id, text}) => ({id, text: `译文：${text}`}))});
           }
@@ -74,7 +75,6 @@
       };
       const openMenu = () => document.querySelector(".bwt-floating-button")
         ?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
-      const noteRoot = () => window.__shadowRoots.get(document.querySelector("[data-bwt-notes]"));
 
       (async () => {
         select("#selection");
@@ -107,39 +107,8 @@
         openMenu();
         document.querySelector('[data-action="reading-notes"]')?.click();
         await wait(20);
-        const drawer = document.querySelector(".bwt-article-guide");
-        let root = noteRoot();
-        const cards = [...(root?.querySelectorAll("[data-note-id]") || [])];
-        const privacyWorked = document.querySelector("[data-bwt-notes]")?.shadowRoot === null;
-        const listWorked = !drawer?.hidden &&
-          drawer?.querySelector("h2")?.textContent === "阅读笔记" && cards.length === 2 &&
-          cards[0].dataset.noteId === articleGuide.id;
-
-        if (interpretation?.id) root?.querySelector(`[data-note-id="${interpretation.id}"]`)?.click();
-        await wait(10);
-        root = noteRoot();
-        const editor = root?.querySelector(".bwt-note-editor");
-        const editButton = root?.querySelector('[data-action="save-note-edit"]');
-        if (editor) editor.value = "修改后的解释";
-        editButton?.click();
-        await wait(20);
-        if (editor) editor.value = "第二次修改";
-        editButton?.click();
-        await wait(20);
-        const edited = window.__stored.readingNotesV1?.find(({id}) => id === interpretation?.id);
-        const sourceLink = root?.querySelector(".bwt-note-source-link");
-        sourceLink?.addEventListener("click", (event) => event.preventDefault());
-        sourceLink?.click();
-        const editWorked = edited?.content === "第二次修改" && edited.updatedAt >= edited.createdAt &&
-          sourceLink?.href === "https://example.test/articles/agents" && sourceLink.target === "_blank" &&
-          window.__opened.at(-1)?.[0] === "https://example.test/articles/agents";
-
-        root?.querySelector('[data-action="delete-note"]')?.click();
-        await wait(20);
-        root = noteRoot();
-        const deleteWorked = window.__stored.readingNotesV1?.length === 1 &&
-          !window.__stored.readingNotesV1?.some(({id}) => id === interpretation?.id) &&
-          root?.querySelectorAll("[data-note-id]").length === 1;
+        const pageOpenWorked = window.__messages.some(({type}) => type === "BWT_OPEN_READING_NOTES") &&
+          document.querySelector(".bwt-article-guide")?.hidden;
 
         const now = Date.now() - 10_000;
         window.__stored.readingNotesV1 = Array.from({length: 300}, (_, index) => ({
@@ -165,13 +134,17 @@
 
         const storedBeforeFailure = window.__stored.readingNotesV1;
         window.__failNotesRead = true;
-        openMenu();
-        document.querySelector('[data-action="reading-notes"]')?.click();
+        select("#selection");
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        await wait(40);
+        const failedSave = document.querySelector('[data-action="save-quick-note"]');
+        failedSave?.click();
         await wait(20);
         const storageFailureWorked = window.__stored.readingNotesV1 === storedBeforeFailure &&
-          document.querySelector(".bwt-article-guide__body")?.textContent.includes("mock notes read failure");
+          failedSave?.textContent.includes("mock notes read failure");
 
-        const checks = {interpretationSaved, guideSaved, privacyWorked, listWorked, editWorked, deleteWorked, limitWorked, storageFailureWorked};
+        const checks = {interpretationSaved, guideSaved, pageOpenWorked, limitWorked, storageFailureWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "notes test passed"

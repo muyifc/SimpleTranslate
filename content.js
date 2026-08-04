@@ -448,18 +448,41 @@
     setFloatingStatus("idle");
 
     const closeMenu = () => menu.matches(":popover-open") && menu.hidePopover();
+    let drag;
+    let ignoreClick = false;
+    const placeButton = (clientX, clientY) => {
+      const left = clientX < innerWidth / 2;
+      button.style.setProperty("--bwt-top", `${Math.max(26, Math.min(innerHeight - 26, clientY))}px`);
+      button.style.setProperty("--bwt-left", left ? "18px" : "auto");
+      button.style.setProperty("--bwt-right", left ? "auto" : "18px");
+      menu.style.setProperty("--bwt-menu-left", left ? "82px" : "auto");
+      menu.style.setProperty("--bwt-menu-right", left ? "auto" : "82px");
+    };
+    const positionMenu = () => {
+      const buttonRect = button.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const halfHeight = menuRect.height / 2;
+      menu.style.setProperty("--bwt-menu-top", `${Math.max(halfHeight + 8, Math.min(innerHeight - halfHeight - 8, buttonRect.top + 26))}px`);
+    };
     const actions = [
       ["cancel", "取消翻译", cancelTranslation],
       ["retry", "重试失败", retryFailures],
+      null,
       ["selection-toggle", "禁用划线翻译", toggleSelectionTranslation],
       ["select-region", "选择翻译区域", beginRegionSelection],
       ["clear-region", "清除区域规则", clearRegionRule],
+      null,
       ["site-toggle", "禁用此网站", toggleSite],
       ["original", "恢复原文", () => document.documentElement.classList.add("bwt-show-original")],
       ["translations", "显示译文", () => document.documentElement.classList.remove("bwt-show-original")],
       ["hide-floating", "隐藏悬浮球", () => setFloatingVisible(false)],
     ];
-    for (const [action, label, handler] of actions) {
+    for (const entry of actions) {
+      if (!entry) {
+        menu.append(document.createElement("hr"));
+        continue;
+      }
+      const [action, label, handler] = entry;
       const item = document.createElement("button");
       item.type = "button";
       item.dataset.action = action;
@@ -476,7 +499,34 @@
       menu.append(item);
     }
 
+    button.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      closeMenu();
+      drag = {pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false};
+      button.dataset.dragging = "";
+      try { button.setPointerCapture(event.pointerId); } catch {}
+    });
+    button.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== drag?.pointerId) return;
+      if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
+      drag.moved = true;
+      placeButton(event.clientX, event.clientY);
+    });
+    button.addEventListener("pointerup", (event) => {
+      if (event.pointerId !== drag?.pointerId) return;
+      ignoreClick = drag.moved;
+      drag = null;
+      delete button.dataset.dragging;
+    });
+    button.addEventListener("pointercancel", () => {
+      drag = null;
+      delete button.dataset.dragging;
+    });
     button.addEventListener("click", () => {
+      if (ignoreClick) {
+        ignoreClick = false;
+        return;
+      }
       closeMenu();
       if (selectingRegion) stopRegionSelection?.();
       else enabled ? cancelTranslation() : startTranslation();
@@ -484,8 +534,16 @@
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       refreshMenuState();
-      if (!menu.matches(":popover-open")) menu.showPopover();
+      if (!menu.matches(":popover-open")) {
+        menu.showPopover();
+        positionMenu();
+      }
       menu.querySelector("button")?.focus();
+    });
+    addEventListener("resize", () => {
+      const rect = button.getBoundingClientRect();
+      placeButton(rect.left + 26, rect.top + 26);
+      if (menu.matches(":popover-open")) positionMenu();
     });
     menu.addEventListener("toggle", (event) => button.setAttribute("aria-expanded", String(event.newState === "open")));
     (document.body || document.documentElement).append(button, menu);

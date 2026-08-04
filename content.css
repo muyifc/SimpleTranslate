@@ -41,9 +41,13 @@ html.bwt-show-original .bwt-translation {
   all: initial;
   --bwt-state: #60a5fa;
   --bwt-progress: 0%;
+  --bwt-top: 50%;
+  --bwt-left: auto;
+  --bwt-right: 18px;
   position: fixed !important;
-  top: 50% !important;
-  right: 18px !important;
+  top: var(--bwt-top) !important;
+  right: var(--bwt-right) !important;
+  left: var(--bwt-left) !important;
   z-index: 2147483647 !important;
   display: grid !important;
   width: 52px !important;
@@ -58,11 +62,16 @@ html.bwt-show-original .bwt-translation {
   isolation: isolate !important;
   box-shadow: 0 8px 24px #0f172a59, 0 0 0 3px var(--bwt-state) !important;
   color: white !important;
-  cursor: pointer !important;
+  cursor: grab !important;
   font: 700 18px/1 system-ui, sans-serif !important;
   text-shadow: 0 1px 4px #0f172acc !important;
   transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease !important;
   user-select: none !important;
+  touch-action: none !important;
+}
+
+.bwt-floating-button[data-dragging] {
+  cursor: grabbing !important;
 }
 
 .bwt-floating-button[hidden] {
@@ -181,11 +190,14 @@ html.bwt-show-original .bwt-translation {
 
 .bwt-floating-menu {
   all: initial;
+  --bwt-menu-top: 50%;
+  --bwt-menu-left: auto;
+  --bwt-menu-right: 82px;
   position: fixed !important;
-  top: 50% !important;
-  right: 82px !important;
+  top: var(--bwt-menu-top) !important;
+  right: var(--bwt-menu-right) !important;
   bottom: auto !important;
-  left: auto !important;
+  left: var(--bwt-menu-left) !important;
   z-index: 2147483647 !important;
   display: grid !important;
   min-width: 120px !important;
@@ -225,6 +237,14 @@ html.bwt-show-original .bwt-translation {
 .bwt-floating-menu button:disabled {
   cursor: default !important;
   opacity: 0.45 !important;
+}
+
+.bwt-floating-menu hr {
+  all: initial;
+  display: block !important;
+  height: 1px !important;
+  margin: 4px 2px !important;
+  background: #e5e7eb !important;
 }
 
 .bwt-region-candidate {

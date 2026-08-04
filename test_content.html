@@ -91,9 +91,11 @@
         let initialErrorState = false;
         let enteredViewportState = false;
         let contextMenuState = false;
+        let menuGroupingState = false;
         let restoreOriginalState = false;
         let showTranslationsState = false;
         let floatingVisibilityState = false;
+        let floatingDragState = false;
         let onlyNonNativeMainContent = false;
         let cancelledBeforeRestart = false;
         let immediateRestartState = false;
@@ -136,11 +138,17 @@
           floatingButton?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
           const menuStyle = floatingMenu && getComputedStyle(floatingMenu);
           const menuItems = [...(floatingMenu?.querySelectorAll('[role="menuitem"]') || [])];
+          const separators = [...(floatingMenu?.querySelectorAll("hr") || [])];
           contextMenuState =
             floatingMenu?.matches(":popover-open") &&
             menuStyle.position === "fixed" &&
             menuStyle.right === "82px" &&
             ["取消翻译", "重试失败", "选择翻译区域", "清除区域规则", "禁用此网站", "恢复原文", "显示译文", "隐藏悬浮球"].every((label) => menuItems.some((item) => item.textContent === label));
+          menuGroupingState = separators.length === 2 &&
+            separators[0].previousElementSibling?.dataset.action === "retry" &&
+            separators[0].nextElementSibling?.dataset.action === "selection-toggle" &&
+            separators[1].previousElementSibling?.dataset.action === "clear-region" &&
+            separators[1].nextElementSibling?.dataset.action === "site-toggle";
           floatingMenu?.querySelector('[data-action="original"]')?.click();
           restoreOriginalState =
             document.documentElement.classList.contains("bwt-show-original") &&
@@ -163,6 +171,12 @@
           });
           window.__contentListener?.({type: "BWT_SHOW_FLOATING"}, {}, () => {});
           floatingVisibilityState = hiddenByMenu && shownByPopup && hiddenByPopup && getComputedStyle(floatingButton).display !== "none";
+          floatingButton?.dispatchEvent(new PointerEvent("pointerdown", {pointerId: 1, button: 0, clientX: innerWidth - 44, clientY: innerHeight / 2, bubbles: true}));
+          floatingButton?.dispatchEvent(new PointerEvent("pointermove", {pointerId: 1, button: 0, clientX: 8, clientY: 80, bubbles: true}));
+          floatingButton?.dispatchEvent(new PointerEvent("pointerup", {pointerId: 1, button: 0, clientX: 8, clientY: 80, bubbles: true}));
+          floatingButton?.click();
+          const draggedStyle = getComputedStyle(floatingButton);
+          floatingDragState = draggedStyle.left === "18px" && floatingButton.getBoundingClientRect().top === 54 && floatingButton.dataset.status === "error";
           for (const id of ["#below", "#below-2", "#below-3"]) window.__viewportObserver?.trigger(document.querySelector(id));
           setTimeout(() => {
             enteredViewportState = /^\d+\/\d+$/.test(floatingButton?.textContent || "") && floatingButton.dataset.status === "translating";
@@ -213,9 +227,11 @@
             initialErrorState,
             enteredViewportState,
             contextMenuState,
+            menuGroupingState,
             restoreOriginalState,
             showTranslationsState,
             floatingVisibilityState,
+            floatingDragState,
             onlyNonNativeMainContent,
             cancelledBeforeRestart,
             immediateRestartState,

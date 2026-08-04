@@ -20,6 +20,7 @@ $files = @(
   "background.js", "content.js", "content.css",
   "popup.html", "popup.js", "popup.css",
   "options.html", "options.js", "options.css",
+  "notes.html", "notes.js", "notes.css",
   "README.md",
   "icons\icon-16.png", "icons\icon-32.png", "icons\icon-48.png", "icons\icon-128.png",
   "icons\floating-ball-128.png"

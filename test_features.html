@@ -123,6 +123,12 @@
           );
         guidePanel?.querySelector('[data-action="close-article-guide"]')?.click();
         const articleGuideCloseWorked = guidePanel?.hidden;
+        openMenu();
+        document.querySelector('[data-action="article-guide"]')?.click();
+        await wait(10);
+        document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+        await wait(40);
+        const articleGuideEscapeWorked = guidePanel?.hidden;
 
         openMenu();
         document.querySelector('[data-action="retry"]')?.click();
@@ -289,7 +295,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, articleGuideWorked, articleGuideCloseWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, nativeInterpretationWorked, interpretationErrorWorked, interpretationCancelWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, articleGuideWorked, articleGuideCloseWorked, articleGuideEscapeWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, nativeInterpretationWorked, interpretationErrorWorked, interpretationCancelWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

@@ -40,6 +40,7 @@
   ].join(",");
   const MAX_PARAGRAPH_CHARACTERS = 6000;
   const MAX_QUICK_CHARACTERS = 1200;
+  const MAX_ARTICLE_GUIDE_CHARACTERS = 20_000;
   // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
   const MAX_CONCURRENT_REQUESTS = 3;
   const MAX_BATCH_PARAGRAPHS = 3;
@@ -84,6 +85,9 @@
   let quickAction;
   let interpretAction;
   let quickPanel;
+  let articleGuidePanel;
+  let articleGuideBody;
+  let articleGuideGeneration = 0;
   let quickGeneration = 0;
   let hoverTimer;
   let hoverTarget;
@@ -466,6 +470,7 @@
       menu.style.setProperty("--bwt-menu-top", `${Math.max(halfHeight + 8, Math.min(innerHeight - halfHeight - 8, buttonRect.top + 26))}px`);
     };
     const actions = [
+      ["article-guide", "文章导读", showArticleGuide],
       ["cancel", "取消翻译", cancelTranslation],
       ["retry", "重试失败", retryFailures],
       null,
@@ -603,6 +608,32 @@
     let registered = 0;
     for (const root of roots) registered += registerCandidates(root);
     return registered;
+  }
+
+  function collectArticleGuideText() {
+    const candidates = [...recordsById.values()].filter((record) =>
+      record.element.isConnected && isInActiveRoot(record.element)
+    ).sort((left, right) => left.element.compareDocumentPosition(right.element) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1);
+    const parts = [];
+    let length = 0;
+    let truncated = false;
+    for (const {element} of candidates) {
+      const text = paragraphText(element);
+      if (!text) continue;
+      const separator = parts.length ? 2 : 0;
+      const remaining = MAX_ARTICLE_GUIDE_CHARACTERS - length - separator;
+      if (remaining <= 0) {
+        truncated = true;
+        break;
+      }
+      parts.push(text.slice(0, remaining));
+      length += separator + Math.min(text.length, remaining);
+      if (text.length > remaining) {
+        truncated = true;
+        break;
+      }
+    }
+    return {text: parts.join("\n\n"), truncated};
   }
 
   function enqueue(element) {
@@ -905,6 +936,76 @@
     await chrome.storage.local.set({selectionTranslationEnabled: !selectionTranslationEnabled});
   }
 
+  function closeArticleGuide() {
+    const wasOpen = articleGuidePanel && !articleGuidePanel.hidden;
+    articleGuideGeneration += 1;
+    if (articleGuidePanel) articleGuidePanel.hidden = true;
+    if (wasOpen) floatingButton?.focus();
+  }
+
+  async function showArticleGuide() {
+    const token = ++articleGuideGeneration;
+    articleGuidePanel.hidden = false;
+    articleGuideBody.textContent = "正在生成文章导读…";
+    articleGuidePanel.querySelector('[data-action="close-article-guide"]')?.focus();
+    if (!siteRuleLoaded) await siteRuleReady;
+    await preferencesReady;
+    if (token !== articleGuideGeneration) return;
+    if (siteRule?.disabled) {
+      articleGuideBody.textContent = "此网站已禁用翻译与解读";
+      return;
+    }
+    if (!activeRoots.some((root) => root.isConnected)) discoverCandidates();
+    const article = collectArticleGuideText();
+    if (article.text.length < 20) {
+      articleGuideBody.textContent = "未识别到足够的正文内容";
+      return;
+    }
+    try {
+      const response = await sendMessage({
+        type: "BWT_GUIDE_ARTICLE",
+        text: article.text,
+        sourceLanguage: "auto",
+        targetLanguage,
+        context: requestContext(false),
+      });
+      if (response?.ok === false) throw new Error(response.error || "文章导读失败");
+      if (typeof response?.guide !== "string" || !response.guide.trim()) throw new Error("导读服务返回了无效结果");
+      if (token === articleGuideGeneration) {
+        articleGuideBody.textContent = `${article.truncated ? `已基于前 ${MAX_ARTICLE_GUIDE_CHARACTERS} 字生成\n\n` : ""}${response.guide.trim()}`;
+      }
+    } catch (error) {
+      if (handleExtensionError(error)) return;
+      if (token === articleGuideGeneration) articleGuideBody.textContent = error.message || "文章导读失败";
+    }
+  }
+
+  function createArticleGuidePanel() {
+    const panel = document.createElement("aside");
+    const header = document.createElement("header");
+    const title = document.createElement("h2");
+    const close = document.createElement("button");
+    const body = document.createElement("div");
+    panel.className = "bwt-article-guide";
+    panel.dataset.bwtControl = "";
+    panel.setAttribute("aria-label", "文章导读");
+    panel.hidden = true;
+    header.className = "bwt-article-guide__header";
+    title.textContent = "文章导读";
+    close.type = "button";
+    close.dataset.action = "close-article-guide";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "关闭文章导读");
+    body.className = "bwt-article-guide__body";
+    body.setAttribute("aria-live", "polite");
+    close.addEventListener("click", closeArticleGuide);
+    header.append(title, close);
+    panel.append(header, body);
+    articleGuidePanel = panel;
+    articleGuideBody = body;
+    (document.body || document.documentElement).append(panel);
+  }
+
   async function startTranslation() {
     if (!siteRuleLoaded) await siteRuleReady;
     await preferencesReady;
@@ -1196,6 +1297,7 @@
 
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
+      closeArticleGuide();
       quickGeneration += 1;
       hideQuickActions();
       quickPanel.hidden = true;
@@ -1206,6 +1308,7 @@
   globalThis.__bwtDebug = {recordCount: () => recordsById.size, fullScans: () => fullScanCount};
 
   createFloatingButton();
+  createArticleGuidePanel();
   createQuickControls();
   chrome.storage?.onChanged?.addListener((changes, areaName) => {
     if (areaName !== "local" || !changes.selectionTranslationEnabled) return;

@@ -374,6 +374,12 @@ test("handles article guidance as a dedicated plain-text request", async () => {
     guide: "阅读导览：这篇文章介绍智能体如何规划任务、调用工具并检查结果。",
   });
   assert.equal(harness.fetchCount, 1);
+  const prompt = harness.requests[0].messages.map(({content}) => content).join("\n");
+  assert.match(prompt, /summary/i);
+  assert.match(prompt, /article outline/i);
+  assert.match(prompt, /core points/i);
+  assert.match(prompt, /key terms/i);
+  assert.match(prompt, /invented links/i);
 });
 
 test("uses only the first enabled model for article guidance", async () => {

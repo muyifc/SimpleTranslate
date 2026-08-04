@@ -247,6 +247,71 @@ html.bwt-show-original .bwt-translation {
   background: #e5e7eb !important;
 }
 
+.bwt-article-guide {
+  all: initial;
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 2147483646 !important;
+  display: flex !important;
+  width: min(420px, 100vw) !important;
+  box-sizing: border-box !important;
+  flex-direction: column !important;
+  border-left: 1px solid #dbe2ea !important;
+  background: white !important;
+  color: #1f2937 !important;
+  box-shadow: -12px 0 32px #0f172a26 !important;
+  font: 14px/1.65 system-ui, sans-serif !important;
+}
+
+.bwt-article-guide[hidden] {
+  display: none !important;
+}
+
+.bwt-article-guide__header {
+  display: flex !important;
+  min-height: 56px !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 10px 16px !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.bwt-article-guide__header h2 {
+  all: initial;
+  color: #111827 !important;
+  font: 600 17px/1.4 system-ui, sans-serif !important;
+}
+
+.bwt-article-guide__header button {
+  all: initial;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 8px !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+  font: 24px/34px system-ui, sans-serif !important;
+  text-align: center !important;
+}
+
+.bwt-article-guide__header button:hover,
+.bwt-article-guide__header button:focus-visible {
+  background: #f1f5f9 !important;
+  color: #1f2937 !important;
+  outline: none !important;
+}
+
+.bwt-article-guide__body {
+  display: block !important;
+  flex: 1 !important;
+  box-sizing: border-box !important;
+  padding: 18px !important;
+  overflow: auto !important;
+  white-space: pre-wrap !important;
+}
+
 .bwt-region-candidate {
   outline: 3px solid #a855f7 !important;
   outline-offset: 3px !important;

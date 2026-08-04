@@ -53,7 +53,7 @@
               ), message.text.includes("Delayed interpretation") ? 80 : 20);
             }
             if (message.type === "BWT_GUIDE_ARTICLE") {
-              return setTimeout(() => callback({ok: true, guide: "文章摘要\n这是一篇测试文章。\n\n文章脉络\n1. 背景\n2. 结论\n\n关键名词\n智能体：自主执行任务的系统。"}), 20);
+              return setTimeout(() => callback({ok: true, guide: "文章摘要\n这是一篇测试文章。\n\n文章脉络\n1. 背景\n2. 结论\n\n核心观点\n智能体需要检查执行结果。\n\n关键名词\n智能体：自主执行任务的系统。"}), 20);
             }
             const paragraphs = message.paragraphs;
             setTimeout(() => {
@@ -117,7 +117,10 @@
           !guideMessage.text.includes("Ignored main text") &&
           guideMessage.context?.pageTitle === "feature test pending" &&
           !guidePanel?.hidden &&
-          guidePanel?.querySelector(".bwt-article-guide__body")?.textContent.includes("文章摘要");
+          getComputedStyle(guidePanel).right === "0px" &&
+          ["文章摘要", "文章脉络", "核心观点", "关键名词"].every((heading) =>
+            guidePanel?.querySelector(".bwt-article-guide__body")?.textContent.includes(heading)
+          );
         guidePanel?.querySelector('[data-action="close-article-guide"]')?.click();
         const articleGuideCloseWorked = guidePanel?.hidden;
 

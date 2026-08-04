@@ -179,6 +179,14 @@ function test(name, run) {
   tests.push({name, run});
 }
 
+async function waitFor(check, message) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error(message);
+}
+
 test("translates a valid paragraph batch", async () => {
   const harness = createHarness(settings());
   const success = await harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [
@@ -534,7 +542,7 @@ test("cancels each pending request for the active tab", async () => {
   const harness = createHarness(settings());
   harness.setFetchMode("pending");
   const firstPending = harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "p-2", text: "Slow"}]});
-  await new Promise((resolve) => setTimeout(resolve));
+  await waitFor(() => harness.fetchCount === 1, "第一个请求未进入 fetch");
   const firstSignal = harness.lastSignal;
   const firstCancellation = harness.send({type: "BWT_CANCEL_REQUESTS"});
   const secondPending = harness.send({type: "BWT_TRANSLATE_BATCH", paragraphs: [{id: "p-3", text: "Slow again"}]});
@@ -542,7 +550,7 @@ test("cancels each pending request for the active tab", async () => {
   assert.equal(firstCancelled.cancelled, 1);
   assert.equal(firstSignal.aborted, true);
 
-  await new Promise((resolve) => setTimeout(resolve));
+  await waitFor(() => harness.fetchCount === 2, "第二个请求未进入 fetch");
   const secondSignal = harness.lastSignal;
   const secondCancelled = await harness.send({type: "BWT_CANCEL_REQUESTS"});
   assert.equal(secondCancelled.cancelled, 1);

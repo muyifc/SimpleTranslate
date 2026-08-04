@@ -10,11 +10,14 @@
       window.__stored = {readingNotesV1: [
         {id: "older", type: "interpretation", title: "旧解读", url: "javascript:alert(1)", sourceText: "old source", content: "旧内容", createdAt: now - 3000, updatedAt: now - 3000},
         {id: "newest", type: "article-guide", title: "最新导读", url: "https://example.test/newest", sourceText: "", content: "最新内容", createdAt: now - 2000, updatedAt: now - 1000},
-        {id: "middle", type: "interpretation", title: "中间解读", url: "https://example.test/middle", sourceText: "middle source", content: "中间内容", createdAt: now - 2500, updatedAt: now - 2000},
+        {id: "middle", type: "selection", title: "中间摘录", url: "https://example.test/middle", sourceText: "", content: "中间内容", createdAt: now - 2500, updatedAt: now - 2000},
       ]};
       window.__opened = [];
+      window.__downloads = [];
       window.confirm = () => true;
       window.open = (...args) => window.__opened.push(args);
+      URL.createObjectURL = (blob) => { window.__downloads.push(blob); return "blob:test"; };
+      URL.revokeObjectURL = () => {};
       window.chrome = {storage: {local: {
         async get(key) {
           if (window.__failRead) throw new Error("mock notes read failure");
@@ -29,7 +32,7 @@
   </head>
   <body>
     <header class="page-header">
-      <div><p class="eyebrow">双语网页翻译</p><h1>阅读笔记</h1><p>本机保存的划词解读与文章导读。</p></div>
+      <div><p class="eyebrow">双语网页翻译</p><h1>阅读笔记</h1><p>本机保存的划词摘录、解读与文章导读。</p></div>
     </header>
     <main class="notes-layout">
       <section class="notes-list-panel" aria-labelledby="notes-list-title">
@@ -56,6 +59,20 @@
         assert(cards.map(({dataset}) => dataset.noteId).join(",") === "newest,middle,older", "笔记未按更新时间倒序排列");
         assert(cards[0].getAttribute("aria-current") === "true", "最新笔记应默认选中");
         assert(document.querySelector("#noteEditor")?.value === "最新内容", "默认详情与选中笔记不一致");
+        cards[1].click();
+        assert(document.querySelector(".note-meta")?.textContent.includes("划词摘录"), "直接保存的划线内容类型错误");
+        document.querySelector("#noteEditor").value = "导出时的当前内容";
+        const exportButton = document.querySelector('[data-action="export-note"]');
+        assert(exportButton?.closest(".note-actions"), "导出按钮应位于当前笔记操作组");
+        exportButton.click();
+        await wait();
+        const markdown = await window.__downloads[0]?.text();
+        assert(markdown?.includes("# 中间摘录"), "导出文件缺少当前笔记标题");
+        assert(markdown?.includes("导出时的当前内容"), "导出文件缺少当前编辑内容");
+        assert(!markdown?.includes("最新内容"), "导出文件不应包含其他笔记");
+        assert(markdown?.includes("[打开链接](https://example.test/middle)"), "导出文件缺少当前笔记原文链接");
+        assert(document.querySelector("#status").textContent.includes("已下载"), "导出后应提示 Markdown 已下载");
+        cards[0].click();
 
         const sourceLink = document.querySelector("#openSource");
         sourceLink?.addEventListener("click", (event) => event.preventDefault());

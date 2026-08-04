@@ -12,7 +12,10 @@
           <img src="icons/icon-32.png" alt="">
           <div><h1>双语网页翻译</h1><p id="modelSummary"></p></div>
         </div>
-        <button id="openSettings" type="button" class="settings-button">设置</button>
+        <div class="header-actions">
+          <a href="notes.html" target="_blank">笔记</a>
+          <button id="openSettings" type="button">设置</button>
+        </div>
       </header>
       <section class="control-card">
         <label><span><strong>当前网页翻译</strong><small>按可视区域持续翻译正文</small></span><input id="translationEnabled" type="checkbox" role="switch" disabled></label>
@@ -70,10 +73,11 @@
         await wait(30);
         document.querySelector("#openSettings").click();
         await wait(10);
+        const notesLink = document.querySelector('.header-actions a[href="notes.html"]');
         const passed = translation.checked && translations.checked && !floating.checked && !selection.checked &&
           !translation.disabled && !selection.disabled && window.__stored.selectionTranslationEnabled === false && document.querySelector("#modelSummary").textContent.includes("1 个模型") &&
           window.__messages.includes("BWT_GET_STATE") && window.__messages.includes("BWT_TRANSLATE_PAGE") &&
-          window.__messages.includes("BWT_HIDE_FLOATING") && window.__optionsOpened;
+          window.__messages.includes("BWT_HIDE_FLOATING") && window.__optionsOpened && notesLink?.target === "_blank";
         document.body.dataset.test = passed ? "passed" : "failed";
         document.title = passed ? "popup test passed" : "popup test failed";
       })().catch((error) => { document.body.dataset.test = "failed"; document.title = `popup test failed: ${error.message}`; });

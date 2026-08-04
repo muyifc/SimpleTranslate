@@ -85,8 +85,10 @@
   let selectingRegion = false;
   let regionCandidate;
   let stopRegionSelection;
+  let quickActions;
   let quickAction;
   let interpretAction;
+  let noteAction;
   let quickPanel;
   let articleGuidePanel;
   let articleGuideTitle;
@@ -956,7 +958,7 @@
   }
 
   function normalizedNote(note) {
-    if (!note || !["interpretation", "article-guide"].includes(note.type) || typeof note.id !== "string") return null;
+    if (!note || !["selection", "interpretation", "article-guide"].includes(note.type) || typeof note.id !== "string") return null;
     const createdAt = Number.isFinite(note.createdAt) ? note.createdAt : Date.now();
     const updatedAt = Number.isFinite(note.updatedAt) ? note.updatedAt : createdAt;
     return {
@@ -1221,19 +1223,18 @@
   }
 
   function hideQuickActions() {
-    if (quickAction) quickAction.hidden = true;
-    if (interpretAction) interpretAction.hidden = true;
+    if (quickActions) quickActions.hidden = true;
   }
 
   function showQuickActions(text, rect) {
-    const left = Math.max(8, Math.min(innerWidth - 72, rect.left));
-    const top = Math.max(8, Math.min(innerHeight - 38, rect.bottom + 8));
     quickAction.dataset.text = text;
     interpretAction.dataset.text = text;
-    quickAction.style.left = `${left}px`;
-    interpretAction.style.left = `${left + 38}px`;
-    quickAction.style.top = interpretAction.style.top = `${top}px`;
-    quickAction.hidden = interpretAction.hidden = false;
+    noteAction.dataset.text = text;
+    noteAction.disabled = false;
+    noteAction.textContent = "记";
+    quickActions.hidden = false;
+    quickActions.style.left = `${Math.max(8, Math.min(innerWidth - quickActions.offsetWidth - 8, rect.left))}px`;
+    quickActions.style.top = `${Math.max(8, Math.min(innerHeight - quickActions.offsetHeight - 8, rect.bottom + 8))}px`;
   }
 
   async function showQuickTranslation(text, rect, existingTranslation = "") {
@@ -1327,32 +1328,45 @@
   }
 
   function createQuickControls() {
+    quickActions = document.createElement("div");
     quickAction = document.createElement("button");
     interpretAction = document.createElement("button");
+    noteAction = document.createElement("button");
     quickPanel = document.createElement("div");
     quickAction.type = "button";
     interpretAction.type = "button";
+    noteAction.type = "button";
     quickAction.className = "bwt-selection-action";
     interpretAction.className = "bwt-selection-action";
+    noteAction.className = "bwt-selection-action";
     quickAction.dataset.bwtControl = "";
     interpretAction.dataset.bwtControl = "";
+    noteAction.dataset.bwtControl = "";
     quickAction.dataset.action = "translate-selection";
     interpretAction.dataset.action = "interpret-selection";
+    noteAction.dataset.action = "save-selection-note";
     quickAction.textContent = "译";
     interpretAction.textContent = "释";
+    noteAction.textContent = "记";
+    quickActions.className = "bwt-selection-actions";
+    quickActions.dataset.bwtControl = "";
+    quickActions.setAttribute("role", "toolbar");
+    quickActions.setAttribute("aria-label", "选中文本操作");
     quickAction.setAttribute("aria-label", "翻译选中文本");
     interpretAction.setAttribute("aria-label", "解读选中文本");
-    quickAction.hidden = true;
-    interpretAction.hidden = true;
+    noteAction.setAttribute("aria-label", "将选中文本记入笔记");
+    quickActions.hidden = true;
     quickPanel.className = "bwt-quick-translation";
     quickPanel.dataset.bwtControl = "";
     quickPanel.setAttribute("role", "status");
     quickPanel.setAttribute("aria-live", "polite");
     quickPanel.hidden = true;
-    (document.body || document.documentElement).append(quickAction, interpretAction, quickPanel);
+    quickActions.append(quickAction, interpretAction, noteAction);
+    (document.body || document.documentElement).append(quickActions, quickPanel);
 
     quickAction.addEventListener("mousedown", (event) => event.preventDefault());
     interpretAction.addEventListener("mousedown", (event) => event.preventDefault());
+    noteAction.addEventListener("mousedown", (event) => event.preventDefault());
     quickAction.addEventListener("click", (event) => {
       event.stopPropagation();
       if (!selectionTranslationEnabled) return;
@@ -1364,6 +1378,22 @@
       if (!selectionTranslationEnabled) return;
       const rect = interpretAction.getBoundingClientRect();
       showQuickInterpretation(interpretAction.dataset.text || "", rect);
+    });
+    noteAction.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (!selectionTranslationEnabled || noteAction.disabled) return;
+      const text = noteAction.dataset.text || "";
+      if (!text) return;
+      noteAction.disabled = true;
+      try {
+        await addNote("selection", "", text);
+        if (noteAction.dataset.text === text) noteAction.textContent = "已记";
+      } catch (error) {
+        if (noteAction.dataset.text === text) {
+          noteAction.disabled = false;
+          noteAction.textContent = error.message || "保存失败";
+        }
+      }
     });
 
     document.addEventListener("mouseup", (event) => setTimeout(async () => {

@@ -340,16 +340,12 @@ html.bwt-show-original .bwt-translation {
   cursor: crosshair !important;
 }
 
-.bwt-selection-action,
+.bwt-selection-actions,
 .bwt-quick-translation {
   all: initial;
   position: fixed !important;
   z-index: 2147483647 !important;
   box-sizing: border-box !important;
-  border: 1px solid #cbd5e1 !important;
-  border-radius: 8px !important;
-  background: white !important;
-  color: #1f2937 !important;
   box-shadow: 0 8px 24px #0003 !important;
   font: 14px/1.5 system-ui, sans-serif !important;
 }
@@ -396,18 +392,47 @@ html.bwt-show-original .bwt-translation {
   color: #dc2626 !important;
 }
 
+.bwt-selection-actions {
+  display: flex !important;
+  gap: 2px !important;
+  padding: 6px !important;
+  border-radius: 12px !important;
+  background: #5b616c !important;
+}
+
 .bwt-selection-action {
-  width: 34px !important;
-  height: 30px !important;
+  all: initial;
+  display: grid !important;
+  width: 38px !important;
+  height: 34px !important;
+  place-items: center !important;
   padding: 0 !important;
-  border-color: #2563eb !important;
-  background: #2563eb !important;
+  border-radius: 8px !important;
   color: white !important;
   cursor: pointer !important;
-  text-align: center !important;
+  font: 16px/1 system-ui, sans-serif !important;
+}
+
+.bwt-selection-action:hover,
+.bwt-selection-action:focus-visible {
+  background: #ffffff1f !important;
+}
+
+.bwt-selection-action:focus-visible {
+  outline: 2px solid white !important;
+  outline-offset: -2px !important;
+}
+
+.bwt-selection-action:disabled {
+  cursor: default !important;
+  opacity: 0.7 !important;
 }
 
 .bwt-quick-translation {
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  background: white !important;
+  color: #1f2937 !important;
   width: min(360px, calc(100vw - 16px)) !important;
   max-height: min(240px, calc(100vh - 16px)) !important;
   padding: 10px 12px !important;
@@ -415,7 +440,7 @@ html.bwt-show-original .bwt-translation {
   white-space: pre-wrap !important;
 }
 
-.bwt-selection-action[hidden],
+.bwt-selection-actions[hidden],
 .bwt-quick-translation[hidden] {
   display: none !important;
 }

@@ -70,13 +70,27 @@
       (async () => {
         select("#selection");
         await wait(20);
+        const directSave = document.querySelector('[data-action="save-selection-note"]');
+        const interpretationsBeforeSave = window.__messages.filter(({type}) => type === "BWT_INTERPRET_TEXT").length;
+        directSave?.click();
+        await wait(20);
+        const directNote = window.__stored.readingNotesV1?.[0];
+        const directNoteSaved = window.__stored.readingNotesV1?.length === 1 &&
+          directNote?.type === "selection" &&
+          directNote?.sourceText === "" &&
+          directNote?.content === "Agents plan tasks and call tools." &&
+          directSave?.textContent === "已记" && directSave.disabled &&
+          window.__messages.filter(({type}) => type === "BWT_INTERPRET_TEXT").length === interpretationsBeforeSave;
+
+        select("#selection");
+        await wait(20);
         document.querySelector('[data-action="interpret-selection"]')?.click();
         await wait(40);
         const quickSave = document.querySelector('[data-action="save-quick-note"]');
         quickSave?.click();
         await wait(20);
         const interpretation = window.__stored.readingNotesV1?.[0];
-        const interpretationSaved = window.__stored.readingNotesV1?.length === 1 &&
+        const interpretationSaved = window.__stored.readingNotesV1?.length === 2 &&
           interpretation?.type === "interpretation" &&
           interpretation?.title === "notes test pending" &&
           interpretation?.url === "https://example.test/articles/agents" &&
@@ -91,7 +105,7 @@
         guideSave?.click();
         await wait(20);
         const articleGuide = window.__stored.readingNotesV1?.find(({type}) => type === "article-guide");
-        const guideSaved = window.__stored.readingNotesV1?.length === 2 &&
+        const guideSaved = window.__stored.readingNotesV1?.length === 3 &&
           articleGuide?.sourceText === "" && articleGuide?.content.includes("文章摘要") &&
           guideSave?.textContent === "已保存" && guideSave.disabled;
 
@@ -135,7 +149,7 @@
         const storageFailureWorked = window.__stored.readingNotesV1 === storedBeforeFailure &&
           failedSave?.textContent.includes("mock notes read failure");
 
-        const checks = {interpretationSaved, guideSaved, pageOpenWorked, limitWorked, storageFailureWorked};
+        const checks = {directNoteSaved, interpretationSaved, guideSaved, pageOpenWorked, limitWorked, storageFailureWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "notes test passed"

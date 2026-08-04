@@ -172,12 +172,14 @@
         getSelection().addRange(range);
         document.querySelector("#selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
         await wait(20);
+        const selectionActions = document.querySelector(".bwt-selection-actions");
         const translateAction = document.querySelector('[data-action="translate-selection"]');
         const interpretAction = document.querySelector('[data-action="interpret-selection"]');
-        const selectionActionsWorked = translateAction?.textContent === "译" && !translateAction.hidden &&
-          interpretAction?.textContent === "释" && !interpretAction.hidden &&
-          translateAction.style.top === interpretAction.style.top &&
-          parseFloat(interpretAction.style.left) > parseFloat(translateAction.style.left);
+        const noteAction = document.querySelector('[data-action="save-selection-note"]');
+        const selectionActionsWorked = !selectionActions?.hidden && selectionActions?.getAttribute("role") === "toolbar" &&
+          translateAction?.textContent === "译" && interpretAction?.textContent === "释" && noteAction?.textContent === "记" &&
+          selectionActions?.firstElementChild === translateAction && selectionActions?.lastElementChild === noteAction &&
+          parseFloat(selectionActions.style.left) >= 8 && parseFloat(selectionActions.style.top) >= 8;
         translateAction?.click();
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
@@ -228,7 +230,7 @@
         getSelection().removeAllRanges();
         document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
         await wait(20);
-        const clickAwayWorked = document.querySelector(".bwt-selection-action")?.hidden &&
+        const clickAwayWorked = document.querySelector(".bwt-selection-actions")?.hidden &&
           document.querySelector(".bwt-quick-translation")?.hidden;
 
         const shortRange = document.createRange();
@@ -252,7 +254,7 @@
         getSelection().addRange(disabledRange);
         document.querySelector("#selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
         await wait(10);
-        const selectionToggleWorked = window.__stored.selectionTranslationEnabled === false && document.querySelector(".bwt-selection-action")?.hidden;
+        const selectionToggleWorked = window.__stored.selectionTranslationEnabled === false && document.querySelector(".bwt-selection-actions")?.hidden;
         openMenu();
         const selectionMenuEnable = document.querySelector('[data-action="selection-toggle"]');
         const selectionMenuEnableLabelWorked = selectionMenuEnable?.textContent === "启用划线翻译";

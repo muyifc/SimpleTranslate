@@ -36,7 +36,7 @@ function validNoteUrl(value) {
 }
 
 function normalizedNote(note) {
-  if (!note || !["interpretation", "article-guide"].includes(note.type) || typeof note.id !== "string") return null;
+  if (!note || !["selection", "interpretation", "article-guide"].includes(note.type) || typeof note.id !== "string") return null;
   const createdAt = Number.isFinite(note.createdAt) ? note.createdAt : Date.now();
   return {
     id: note.id.slice(0, 100),
@@ -52,6 +52,38 @@ function normalizedNote(note) {
 
 function byUpdatedAt(left, right) {
   return right.updatedAt - left.updatedAt;
+}
+
+function noteTypeLabel(type) {
+  return type === "article-guide" ? "文章导读" : type === "selection" ? "划词摘录" : "划词解读";
+}
+
+function exportNote(note, editor, button) {
+  button.disabled = true;
+  try {
+    const title = note.title.replace(/[\r\n]+/g, " ");
+    const lines = [
+      `# ${title}`,
+      "",
+      `- 类型：${noteTypeLabel(note.type)}`,
+      `- 更新时间：${new Date(note.updatedAt).toLocaleString()}`,
+    ];
+    if (note.url) lines.push(`- 原文：[打开链接](${note.url})`);
+    lines.push("");
+    if (note.sourceText) lines.push(...note.sourceText.split(/\r?\n/).map((line) => `> ${line}`), "");
+    lines.push(editor.value, "");
+    const url = URL.createObjectURL(new Blob([lines.join("\n")], {type: "text/markdown;charset=utf-8"}));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 100) || "阅读笔记"}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus("当前笔记已下载为 Markdown 文件");
+  } catch (error) {
+    setStatus(error.message || String(error), true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function render() {
@@ -80,7 +112,7 @@ function renderList() {
     meta.className = "note-card__meta";
     excerpt.className = "note-card__excerpt";
     title.textContent = note.title;
-    meta.textContent = `${note.type === "article-guide" ? "文章导读" : "划词解读"} · ${new Date(note.updatedAt).toLocaleString()}`;
+    meta.textContent = `${noteTypeLabel(note.type)} · ${new Date(note.updatedAt).toLocaleString()}`;
     excerpt.textContent = note.content.slice(0, 160);
     card.append(title, meta, excerpt);
     card.addEventListener("click", () => {
@@ -111,13 +143,14 @@ function renderDetail() {
   const actions = document.createElement("div");
   const save = document.createElement("button");
   const open = document.createElement("a");
+  const exportButton = document.createElement("button");
   const remove = document.createElement("button");
   const safeUrl = validNoteUrl(note.url);
 
   title.className = "note-detail-heading";
   title.textContent = note.title;
   meta.className = "note-meta";
-  meta.textContent = `${note.type === "article-guide" ? "文章导读" : "划词解读"} · ${new Date(note.updatedAt).toLocaleString()}`;
+  meta.textContent = `${noteTypeLabel(note.type)} · ${new Date(note.updatedAt).toLocaleString()}`;
   source.className = "note-source";
   source.textContent = note.sourceText;
   source.hidden = !note.sourceText;
@@ -126,10 +159,13 @@ function renderDetail() {
   editor.maxLength = MAX_NOTE_CONTENT_CHARACTERS;
   editor.value = note.content;
   actions.className = "note-actions";
-  save.type = remove.type = "button";
+  save.type = exportButton.type = remove.type = "button";
   save.dataset.action = "save-note";
+  exportButton.dataset.action = "export-note";
   remove.dataset.action = "delete-note";
   save.textContent = "保存修改";
+  exportButton.className = "secondary";
+  exportButton.textContent = "导出当前笔记";
   remove.className = "danger";
   remove.textContent = "删除笔记";
   open.id = "openSource";
@@ -168,6 +204,7 @@ function renderDetail() {
     const url = validNoteUrl(note.url);
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   });
+  exportButton.addEventListener("click", () => exportNote(note, editor, exportButton));
   remove.addEventListener("click", async () => {
     if (!confirm("删除这条笔记？")) return;
     remove.disabled = true;
@@ -187,7 +224,7 @@ function renderDetail() {
     }
   });
 
-  actions.append(save, open, remove);
+  actions.append(save, open, exportButton, remove);
   noteDetail.replaceChildren(title, meta, source, editor, actions);
 }
 

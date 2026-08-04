@@ -303,6 +303,28 @@ html.bwt-show-original .bwt-translation {
   outline: none !important;
 }
 
+.bwt-article-guide__actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.bwt-article-guide__action {
+  width: auto !important;
+  padding: 0 10px !important;
+  color: #2563eb !important;
+  font: 600 13px/34px system-ui, sans-serif !important;
+}
+
+.bwt-article-guide__action[hidden] {
+  display: none !important;
+}
+
+.bwt-article-guide__action:disabled {
+  cursor: default !important;
+  opacity: 0.65 !important;
+}
+
 .bwt-article-guide__body {
   display: block !important;
   flex: 1 !important;
@@ -346,6 +368,27 @@ html.bwt-show-original .bwt-translation {
 
 .bwt-translation__text {
   white-space: pre-wrap !important;
+}
+
+.bwt-quick-result__text {
+  white-space: pre-wrap !important;
+}
+
+.bwt-quick-note-save {
+  all: initial;
+  display: block !important;
+  margin: 10px 0 0 auto !important;
+  padding: 6px 9px !important;
+  border-radius: 7px !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  cursor: pointer !important;
+  font: 600 12px/1.4 system-ui, sans-serif !important;
+}
+
+.bwt-quick-note-save:disabled {
+  cursor: default !important;
+  opacity: 0.65 !important;
 }
 
 .bwt-translation__variant--error .bwt-translation__model,

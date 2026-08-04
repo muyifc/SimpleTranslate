@@ -191,7 +191,7 @@
         const interpretationMessage = window.__messages.find(({type}) => type === "BWT_INTERPRET_TEXT");
         const interpretationWorked = interpretationMessage?.text === "Selected English words" &&
           interpretationMessage?.targetLanguage === "zh-CN" &&
-          document.querySelector(".bwt-quick-translation")?.textContent === "通俗解释：Selected English words";
+          document.querySelector(".bwt-quick-result__text")?.textContent === "通俗解释：Selected English words";
         document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
         const nativeRange = document.createRange();
         nativeRange.selectNodeContents(document.querySelector("#native-selection"));
@@ -203,7 +203,7 @@
         await wait(60);
         const nativeInterpretationWorked = window.__messages.some(({type, text}) =>
           type === "BWT_INTERPRET_TEXT" && text === "智能体是一种自主系统"
-        ) && document.querySelector(".bwt-quick-translation")?.textContent === "通俗解释：智能体是一种自主系统";
+        ) && document.querySelector(".bwt-quick-result__text")?.textContent === "通俗解释：智能体是一种自主系统";
         document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
         const brokenRange = document.createRange();
         brokenRange.selectNodeContents(document.querySelector("#broken-interpretation"));

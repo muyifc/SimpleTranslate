@@ -1,13 +1,22 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <base href="https://example.test/articles/agents">
+    <link rel="canonical" href="https://example.test/articles/agents">
     <title>notes test pending</title>
     <link rel="stylesheet" href="content.css">
     <script>
       window.__stored = {siteRules: {}, nativeLanguage: "zh-CN"};
       window.__messages = [];
+      window.__opened = [];
+      window.__shadowRoots = new WeakMap();
+      const nativeAttachShadow = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function(options) {
+        const root = nativeAttachShadow.call(this, options);
+        window.__shadowRoots.set(this, root);
+        return root;
+      };
       window.confirm = () => true;
+      window.open = (...args) => window.__opened.push(args);
       window.IntersectionObserver = class {
         observe() {}
         unobserve() {}
@@ -21,6 +30,7 @@
           onChanged: {addListener() {}},
           local: {
             async get(keys) {
+              if (window.__failNotesRead && keys === "readingNotesV1") throw new Error("mock notes read failure");
               if (typeof keys === "string") return {[keys]: window.__stored[keys]};
               const names = Array.isArray(keys) ? keys : Object.keys(keys || {});
               return Object.fromEntries(names.map((name) => [name, window.__stored[name]]));
@@ -64,6 +74,7 @@
       };
       const openMenu = () => document.querySelector(".bwt-floating-button")
         ?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+      const noteRoot = () => window.__shadowRoots.get(document.querySelector("[data-bwt-notes]"));
 
       (async () => {
         select("#selection");
@@ -97,27 +108,38 @@
         document.querySelector('[data-action="reading-notes"]')?.click();
         await wait(20);
         const drawer = document.querySelector(".bwt-article-guide");
-        const cards = [...document.querySelectorAll("[data-note-id]")];
+        let root = noteRoot();
+        const cards = [...(root?.querySelectorAll("[data-note-id]") || [])];
+        const privacyWorked = document.querySelector("[data-bwt-notes]")?.shadowRoot === null;
         const listWorked = !drawer?.hidden &&
           drawer?.querySelector("h2")?.textContent === "阅读笔记" && cards.length === 2 &&
           cards[0].dataset.noteId === articleGuide.id;
 
-        document.querySelector(`[data-note-id="${interpretation.id}"]`)?.click();
+        if (interpretation?.id) root?.querySelector(`[data-note-id="${interpretation.id}"]`)?.click();
         await wait(10);
-        const editor = document.querySelector(".bwt-note-editor");
-        editor.value = "修改后的解释";
-        document.querySelector('[data-action="save-note-edit"]')?.click();
+        root = noteRoot();
+        const editor = root?.querySelector(".bwt-note-editor");
+        const editButton = root?.querySelector('[data-action="save-note-edit"]');
+        if (editor) editor.value = "修改后的解释";
+        editButton?.click();
         await wait(20);
-        const edited = window.__stored.readingNotesV1.find(({id}) => id === interpretation.id);
-        const sourceLink = document.querySelector(".bwt-note-source-link");
-        const editWorked = edited?.content === "修改后的解释" && edited.updatedAt >= edited.createdAt &&
-          sourceLink?.href === "https://example.test/articles/agents" && sourceLink.target === "_blank";
+        if (editor) editor.value = "第二次修改";
+        editButton?.click();
+        await wait(20);
+        const edited = window.__stored.readingNotesV1?.find(({id}) => id === interpretation?.id);
+        const sourceLink = root?.querySelector(".bwt-note-source-link");
+        sourceLink?.addEventListener("click", (event) => event.preventDefault());
+        sourceLink?.click();
+        const editWorked = edited?.content === "第二次修改" && edited.updatedAt >= edited.createdAt &&
+          sourceLink?.href === "https://example.test/articles/agents" && sourceLink.target === "_blank" &&
+          window.__opened.at(-1)?.[0] === "https://example.test/articles/agents";
 
-        document.querySelector('[data-action="delete-note"]')?.click();
+        root?.querySelector('[data-action="delete-note"]')?.click();
         await wait(20);
+        root = noteRoot();
         const deleteWorked = window.__stored.readingNotesV1?.length === 1 &&
-          !window.__stored.readingNotesV1.some(({id}) => id === interpretation.id) &&
-          document.querySelectorAll("[data-note-id]").length === 1;
+          !window.__stored.readingNotesV1?.some(({id}) => id === interpretation?.id) &&
+          root?.querySelectorAll("[data-note-id]").length === 1;
 
         const now = Date.now() - 10_000;
         window.__stored.readingNotesV1 = Array.from({length: 300}, (_, index) => ({
@@ -141,7 +163,15 @@
           window.__stored.readingNotesV1.some(({sourceText}) => sourceText === "Agents verify their results.") &&
           !window.__stored.readingNotesV1.some(({id}) => id === "old-0");
 
-        const checks = {interpretationSaved, guideSaved, listWorked, editWorked, deleteWorked, limitWorked};
+        const storedBeforeFailure = window.__stored.readingNotesV1;
+        window.__failNotesRead = true;
+        openMenu();
+        document.querySelector('[data-action="reading-notes"]')?.click();
+        await wait(20);
+        const storageFailureWorked = window.__stored.readingNotesV1 === storedBeforeFailure &&
+          document.querySelector(".bwt-article-guide__body")?.textContent.includes("mock notes read failure");
+
+        const checks = {interpretationSaved, guideSaved, privacyWorked, listWorked, editWorked, deleteWorked, limitWorked, storageFailureWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "notes test passed"

@@ -41,6 +41,26 @@
   const MAX_PARAGRAPH_CHARACTERS = 6000;
   const MAX_QUICK_CHARACTERS = 1200;
   const MAX_ARTICLE_GUIDE_CHARACTERS = 20_000;
+  const NOTES_STORAGE_KEY = "readingNotesV1";
+  const MAX_NOTES = 300;
+  const MAX_NOTE_CONTENT_CHARACTERS = 10_000;
+  const NOTES_DRAWER_CSS = `
+    :host { all: initial; display: block; color: #1f2937; font: 14px/1.5 system-ui, sans-serif; }
+    .bwt-note-card { all: initial; display: grid; width: 100%; box-sizing: border-box; gap: 5px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: white; color: #1f2937; cursor: pointer; font: 14px/1.45 system-ui, sans-serif; text-align: left; }
+    .bwt-note-card + .bwt-note-card { margin-top: 10px; }
+    .bwt-note-card:hover, .bwt-note-card:focus-visible { border-color: #93c5fd; background: #f8fbff; outline: none; }
+    .bwt-note-card strong { font-weight: 600; }
+    .bwt-note-card span:nth-child(2) { color: #64748b; font-size: 12px; }
+    .bwt-note-card span:last-child { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+    .bwt-note-source { margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid #93c5fd; background: #eff6ff; color: #475569; white-space: pre-wrap; }
+    .bwt-note-source[hidden] { display: none; }
+    .bwt-note-editor { display: block; width: 100%; min-height: 260px; box-sizing: border-box; resize: vertical; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; color: #1f2937; font: 14px/1.6 system-ui, sans-serif; }
+    .bwt-note-editor:focus { border-color: #60a5fa; outline: 2px solid #bfdbfe; }
+    .bwt-note-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .bwt-note-actions button, .bwt-note-actions a { all: initial; padding: 7px 10px; border-radius: 7px; background: #eff6ff; color: #1d4ed8; cursor: pointer; font: 600 13px/1.4 system-ui, sans-serif; text-decoration: none; }
+    .bwt-note-actions button:disabled { cursor: default; opacity: .65; }
+    .bwt-note-actions [data-action="delete-note"] { background: #fef2f2; color: #dc2626; }
+  `;
   // ponytail: Three concurrent requests keeps scrolling responsive without immediately hitting common API limits.
   const MAX_CONCURRENT_REQUESTS = 3;
   const MAX_BATCH_PARAGRAPHS = 3;
@@ -86,6 +106,8 @@
   let interpretAction;
   let quickPanel;
   let articleGuidePanel;
+  let articleGuideTitle;
+  let articleGuideAction;
   let articleGuideBody;
   let articleGuideGeneration = 0;
   let quickGeneration = 0;
@@ -471,6 +493,7 @@
     };
     const actions = [
       ["article-guide", "文章导读", showArticleGuide],
+      ["reading-notes", "阅读笔记", showReadingNotes],
       ["cancel", "取消翻译", cancelTranslation],
       ["retry", "重试失败", retryFailures],
       null,
@@ -936,6 +959,100 @@
     await chrome.storage.local.set({selectionTranslationEnabled: !selectionTranslationEnabled});
   }
 
+  function validNoteUrl(value) {
+    try {
+      const url = new URL(value);
+      return ["http:", "https:"].includes(url.protocol) ? url.href.slice(0, 2000) : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function currentNoteUrl() {
+    return validNoteUrl(document.querySelector('link[rel="canonical"]')?.href || location.href);
+  }
+
+  function normalizedNote(note) {
+    if (!note || !["interpretation", "article-guide"].includes(note.type) || typeof note.id !== "string") return null;
+    const createdAt = Number.isFinite(note.createdAt) ? note.createdAt : Date.now();
+    const updatedAt = Number.isFinite(note.updatedAt) ? note.updatedAt : createdAt;
+    return {
+      id: note.id.slice(0, 100),
+      type: note.type,
+      title: String(note.title || "未命名页面").slice(0, 300),
+      url: validNoteUrl(note.url),
+      sourceText: String(note.sourceText || "").slice(0, MAX_QUICK_CHARACTERS),
+      content: String(note.content || "").slice(0, MAX_NOTE_CONTENT_CHARACTERS),
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  async function readNotes() {
+    const stored = await chrome.storage.local.get(NOTES_STORAGE_KEY);
+    return (Array.isArray(stored[NOTES_STORAGE_KEY]) ? stored[NOTES_STORAGE_KEY] : [])
+      .map(normalizedNote).filter(Boolean).sort((left, right) => right.updatedAt - left.updatedAt);
+  }
+
+  async function writeNotes(notes) {
+    const limited = notes.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, MAX_NOTES);
+    await chrome.storage.local.set({[NOTES_STORAGE_KEY]: limited});
+    return limited;
+  }
+
+  async function addNote(type, sourceText, content) {
+    const now = Date.now();
+    const note = normalizedNote({
+      id: crypto.randomUUID?.() || `note-${now}-${Math.random().toString(16).slice(2)}`,
+      type,
+      title: document.title,
+      url: currentNoteUrl(),
+      sourceText,
+      content,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await writeNotes([note, ...await readNotes()]);
+    return note;
+  }
+
+  async function updateNote(id, content) {
+    const notes = await readNotes();
+    const note = notes.find((item) => item.id === id);
+    if (!note) throw new Error("笔记不存在");
+    note.content = String(content || "").trim().slice(0, MAX_NOTE_CONTENT_CHARACTERS);
+    if (!note.content) throw new Error("笔记内容不能为空");
+    note.updatedAt = Date.now();
+    await writeNotes(notes);
+    return note;
+  }
+
+  async function deleteNote(id) {
+    const notes = await readNotes();
+    await writeNotes(notes.filter((note) => note.id !== id));
+  }
+
+  function setDrawer(title, actionLabel = "", actionHandler = null, actionName = "") {
+    articleGuideTitle.textContent = title;
+    articleGuidePanel.setAttribute("aria-label", title);
+    articleGuideAction.hidden = !actionLabel;
+    articleGuideAction.disabled = false;
+    articleGuideAction.textContent = actionLabel;
+    articleGuideAction.onclick = actionHandler;
+    articleGuideAction.dataset.action = actionName;
+  }
+
+  function createNotesRoot() {
+    const host = document.createElement("div");
+    const style = document.createElement("style");
+    const root = host.attachShadow({mode: "closed"});
+    host.dataset.bwtNotes = "";
+    style.textContent = NOTES_DRAWER_CSS;
+    root.append(style);
+    articleGuideBody.replaceChildren(host);
+    return root;
+  }
+
   function closeArticleGuide() {
     const wasOpen = articleGuidePanel && !articleGuidePanel.hidden;
     articleGuideGeneration += 1;
@@ -946,6 +1063,7 @@
   async function showArticleGuide() {
     const token = ++articleGuideGeneration;
     articleGuidePanel.hidden = false;
+    setDrawer("文章导读");
     articleGuideBody.textContent = "正在生成文章导读…";
     articleGuidePanel.querySelector('[data-action="close-article-guide"]')?.focus();
     if (!siteRuleLoaded) await siteRuleReady;
@@ -972,7 +1090,18 @@
       if (response?.ok === false) throw new Error(response.error || "文章导读失败");
       if (typeof response?.guide !== "string" || !response.guide.trim()) throw new Error("导读服务返回了无效结果");
       if (token === articleGuideGeneration) {
-        articleGuideBody.textContent = `${article.truncated ? `已基于前 ${MAX_ARTICLE_GUIDE_CHARACTERS} 字生成\n\n` : ""}${response.guide.trim()}`;
+        const guide = `${article.truncated ? `已基于前 ${MAX_ARTICLE_GUIDE_CHARACTERS} 字生成\n\n` : ""}${response.guide.trim()}`;
+        articleGuideBody.textContent = guide;
+        setDrawer("文章导读", "保存导读", async () => {
+          articleGuideAction.disabled = true;
+          try {
+            await addNote("article-guide", "", guide);
+            articleGuideAction.textContent = "已保存";
+          } catch (error) {
+            articleGuideAction.disabled = false;
+            articleGuideAction.textContent = error.message || "保存失败";
+          }
+        }, "save-article-guide");
       }
     } catch (error) {
       if (handleExtensionError(error)) return;
@@ -980,10 +1109,110 @@
     }
   }
 
+  async function showReadingNotes() {
+    const token = ++articleGuideGeneration;
+    articleGuidePanel.hidden = false;
+    setDrawer("阅读笔记");
+    articleGuideBody.textContent = "正在读取笔记…";
+    articleGuidePanel.querySelector('[data-action="close-article-guide"]')?.focus();
+    try {
+      const notes = await readNotes();
+      if (token !== articleGuideGeneration) return;
+      const root = createNotesRoot();
+      if (!notes.length) {
+        root.append("还没有阅读笔记");
+        return;
+      }
+      root.append(...notes.map((note) => {
+        const card = document.createElement("button");
+        const title = document.createElement("strong");
+        const meta = document.createElement("span");
+        const excerpt = document.createElement("span");
+        card.type = "button";
+        card.className = "bwt-note-card";
+        card.dataset.noteId = note.id;
+        title.textContent = note.title;
+        meta.textContent = `${note.type === "article-guide" ? "文章导读" : "划词解读"} · ${new Date(note.updatedAt).toLocaleString()}`;
+        excerpt.textContent = note.content.slice(0, 160);
+        card.append(title, meta, excerpt);
+        card.addEventListener("click", () => showNoteDetail(note));
+        return card;
+      }));
+    } catch (error) {
+      if (token === articleGuideGeneration) articleGuideBody.textContent = error.message || "读取笔记失败";
+    }
+  }
+
+  function showNoteDetail(note) {
+    articleGuideGeneration += 1;
+    setDrawer("笔记详情", "返回", showReadingNotes, "back-to-notes");
+    const root = createNotesRoot();
+    const source = document.createElement("div");
+    const editor = document.createElement("textarea");
+    const actions = document.createElement("div");
+    const save = document.createElement("button");
+    const remove = document.createElement("button");
+    source.className = "bwt-note-source";
+    source.textContent = note.sourceText;
+    source.hidden = !note.sourceText;
+    editor.className = "bwt-note-editor";
+    editor.maxLength = MAX_NOTE_CONTENT_CHARACTERS;
+    editor.value = note.content;
+    actions.className = "bwt-note-actions";
+    save.type = remove.type = "button";
+    save.dataset.action = "save-note-edit";
+    remove.dataset.action = "delete-note";
+    save.textContent = "保存修改";
+    remove.textContent = "删除笔记";
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      try {
+        note = await updateNote(note.id, editor.value);
+        save.textContent = "已保存";
+        save.disabled = false;
+      } catch (error) {
+        save.disabled = false;
+        save.textContent = error.message || "保存失败";
+      }
+    });
+    editor.addEventListener("input", () => { save.textContent = "保存修改"; });
+    remove.addEventListener("click", async () => {
+      if (!confirm("删除这条笔记？")) return;
+      remove.disabled = true;
+      try {
+        await deleteNote(note.id);
+        await showReadingNotes();
+      } catch (error) {
+        remove.disabled = false;
+        remove.textContent = error.message || "删除失败";
+      }
+    });
+    actions.append(save);
+    if (note.url) {
+      const link = document.createElement("a");
+      link.className = "bwt-note-source-link";
+      link.href = note.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "打开原文";
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const url = validNoteUrl(note.url);
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+      });
+      actions.append(link);
+    }
+    actions.append(remove);
+    root.append(source, editor, actions);
+    editor.focus();
+  }
+
   function createArticleGuidePanel() {
     const panel = document.createElement("aside");
     const header = document.createElement("header");
     const title = document.createElement("h2");
+    const headerActions = document.createElement("div");
+    const action = document.createElement("button");
     const close = document.createElement("button");
     const body = document.createElement("div");
     panel.className = "bwt-article-guide";
@@ -992,16 +1221,24 @@
     panel.hidden = true;
     header.className = "bwt-article-guide__header";
     title.textContent = "文章导读";
+    headerActions.className = "bwt-article-guide__actions";
+    action.type = "button";
+    action.className = "bwt-article-guide__action";
+    action.hidden = true;
     close.type = "button";
+    close.className = "bwt-article-guide__close";
     close.dataset.action = "close-article-guide";
     close.textContent = "×";
     close.setAttribute("aria-label", "关闭文章导读");
     body.className = "bwt-article-guide__body";
     body.setAttribute("aria-live", "polite");
     close.addEventListener("click", closeArticleGuide);
-    header.append(title, close);
+    headerActions.append(action, close);
+    header.append(title, headerActions);
     panel.append(header, body);
     articleGuidePanel = panel;
+    articleGuideTitle = title;
+    articleGuideAction = action;
     articleGuideBody = body;
     (document.body || document.documentElement).append(panel);
   }
@@ -1198,7 +1435,28 @@
       }, token);
       if (response?.ok === false) throw new Error(response.error || "解读失败");
       if (typeof response?.interpretation !== "string" || !response.interpretation.trim()) throw new Error("解读服务返回了无效结果");
-      if (token === quickGeneration) quickPanel.textContent = response.interpretation.trim();
+      if (token === quickGeneration) {
+        const content = response.interpretation.trim();
+        const result = document.createElement("div");
+        const save = document.createElement("button");
+        result.className = "bwt-quick-result__text";
+        result.textContent = content;
+        save.type = "button";
+        save.className = "bwt-quick-note-save";
+        save.dataset.action = "save-quick-note";
+        save.textContent = "保存笔记";
+        save.addEventListener("click", async () => {
+          save.disabled = true;
+          try {
+            await addNote("interpretation", text, content);
+            save.textContent = "已保存";
+          } catch (error) {
+            save.disabled = false;
+            save.textContent = error.message || "保存失败";
+          }
+        });
+        quickPanel.replaceChildren(result, save);
+      }
     } catch (error) {
       if (handleExtensionError(error)) return;
       if (token === quickGeneration) quickPanel.textContent = error.message || "解读失败";

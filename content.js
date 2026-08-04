@@ -82,6 +82,7 @@
   let regionCandidate;
   let stopRegionSelection;
   let quickAction;
+  let interpretAction;
   let quickPanel;
   let quickGeneration = 0;
   let hoverTimer;
@@ -407,7 +408,7 @@
     generation += 1;
     queue.length = 0;
     quickGeneration += 1;
-    if (quickAction) quickAction.hidden = true;
+    hideQuickActions();
     if (quickPanel) {
       quickPanel.hidden = false;
       quickPanel.textContent = "扩展已更新，请刷新页面";
@@ -930,7 +931,7 @@
   async function cancelTranslation() {
     if (selectingRegion) stopRegionSelection?.("cancelled");
     quickGeneration += 1;
-    quickAction && (quickAction.hidden = true);
+    hideQuickActions();
     quickPanel && (quickPanel.hidden = true);
     for (const job of quickQueue.splice(0)) job.reject(new Error("翻译已取消"));
     enabled = false;
@@ -1018,9 +1019,25 @@
     element.style.top = `${top}px`;
   }
 
+  function hideQuickActions() {
+    if (quickAction) quickAction.hidden = true;
+    if (interpretAction) interpretAction.hidden = true;
+  }
+
+  function showQuickActions(text, rect) {
+    const left = Math.max(8, Math.min(innerWidth - 72, rect.left));
+    const top = Math.max(8, Math.min(innerHeight - 38, rect.bottom + 8));
+    quickAction.dataset.text = text;
+    interpretAction.dataset.text = text;
+    quickAction.style.left = `${left}px`;
+    interpretAction.style.left = `${left + 38}px`;
+    quickAction.style.top = interpretAction.style.top = `${top}px`;
+    quickAction.hidden = interpretAction.hidden = false;
+  }
+
   async function showQuickTranslation(text, rect, existingTranslation = "") {
     const token = ++quickGeneration;
-    quickAction.hidden = true;
+    hideQuickActions();
     quickPanel.hidden = false;
     quickPanel.textContent = existingTranslation || "正在翻译…";
     placeQuickControl(quickPanel, rect);
@@ -1057,49 +1074,93 @@
     }
   }
 
+  async function showQuickInterpretation(text, rect) {
+    const token = ++quickGeneration;
+    hideQuickActions();
+    quickPanel.hidden = false;
+    quickPanel.textContent = "正在解读…";
+    placeQuickControl(quickPanel, rect);
+    if (siteRule?.disabled) {
+      quickPanel.textContent = "此网站已禁用翻译";
+      return;
+    }
+    await preferencesReady;
+    if (token !== quickGeneration || siteRule?.disabled) return;
+
+    try {
+      const response = await sendQuickMessage({
+        type: "BWT_INTERPRET_TEXT",
+        text,
+        sourceLanguage: "auto",
+        targetLanguage,
+        context: requestContext(),
+      }, token);
+      if (response?.ok === false) throw new Error(response.error || "解读失败");
+      if (typeof response?.interpretation !== "string" || !response.interpretation.trim()) throw new Error("解读服务返回了无效结果");
+      if (token === quickGeneration) quickPanel.textContent = response.interpretation.trim();
+    } catch (error) {
+      if (handleExtensionError(error)) return;
+      if (token === quickGeneration) quickPanel.textContent = error.message || "解读失败";
+    }
+  }
+
   function createQuickControls() {
     quickAction = document.createElement("button");
+    interpretAction = document.createElement("button");
     quickPanel = document.createElement("div");
     quickAction.type = "button";
+    interpretAction.type = "button";
     quickAction.className = "bwt-selection-action";
+    interpretAction.className = "bwt-selection-action";
     quickAction.dataset.bwtControl = "";
+    interpretAction.dataset.bwtControl = "";
+    quickAction.dataset.action = "translate-selection";
+    interpretAction.dataset.action = "interpret-selection";
     quickAction.textContent = "译";
+    interpretAction.textContent = "释";
     quickAction.setAttribute("aria-label", "翻译选中文本");
+    interpretAction.setAttribute("aria-label", "解读选中文本");
     quickAction.hidden = true;
+    interpretAction.hidden = true;
     quickPanel.className = "bwt-quick-translation";
     quickPanel.dataset.bwtControl = "";
     quickPanel.setAttribute("role", "status");
     quickPanel.setAttribute("aria-live", "polite");
     quickPanel.hidden = true;
-    (document.body || document.documentElement).append(quickAction, quickPanel);
+    (document.body || document.documentElement).append(quickAction, interpretAction, quickPanel);
 
     quickAction.addEventListener("mousedown", (event) => event.preventDefault());
+    interpretAction.addEventListener("mousedown", (event) => event.preventDefault());
     quickAction.addEventListener("click", (event) => {
       event.stopPropagation();
       if (!selectionTranslationEnabled) return;
       const rect = quickAction.getBoundingClientRect();
       showQuickTranslation(quickAction.dataset.text || "", rect);
     });
+    interpretAction.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!selectionTranslationEnabled) return;
+      const rect = interpretAction.getBoundingClientRect();
+      showQuickInterpretation(interpretAction.dataset.text || "", rect);
+    });
 
     document.addEventListener("mouseup", (event) => setTimeout(async () => {
       await preferencesReady;
       if (!selectionTranslationEnabled) {
-        quickAction.hidden = true;
+        hideQuickActions();
         return;
       }
       if (event.target.closest?.("[data-bwt-control]") || selectingRegion || siteRule?.disabled) return;
       const selection = getSelection();
       const text = selection?.toString().replace(/\s+/g, " ").trim() || "";
       if (!text || text.length > MAX_QUICK_CHARACTERS || !selection.rangeCount) {
-        quickAction.hidden = true;
+        hideQuickActions();
         return;
       }
       const container = selection.getRangeAt(0).commonAncestorContainer;
       const parent = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
       if (parent?.closest(EXCLUDED_SELECTOR)) return;
-      quickAction.dataset.text = text;
-      placeQuickControl(quickAction, selection.getRangeAt(0).getBoundingClientRect());
-      quickAction.hidden = false;
+      showQuickActions(text, selection.getRangeAt(0).getBoundingClientRect());
     }, 0), true);
 
     document.addEventListener("mouseover", (event) => {
@@ -1129,14 +1190,14 @@
     document.addEventListener("click", (event) => {
       if (event.target.closest?.("[data-bwt-control]")) return;
       quickGeneration += 1;
-      quickAction.hidden = true;
+      hideQuickActions();
       quickPanel.hidden = true;
     }, true);
 
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
       quickGeneration += 1;
-      quickAction.hidden = true;
+      hideQuickActions();
       quickPanel.hidden = true;
     }, true);
   }
@@ -1151,7 +1212,7 @@
     selectionTranslationEnabled = changes.selectionTranslationEnabled.newValue !== false;
     if (selectionTranslationEnabled) return;
     quickGeneration += 1;
-    quickAction.hidden = true;
+    hideQuickActions();
     quickPanel.hidden = true;
   });
   siteRuleReady.then(() => {

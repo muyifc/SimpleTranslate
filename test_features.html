@@ -47,7 +47,10 @@
             window.__messages.push(message);
             if (message.type === "BWT_CANCEL_REQUESTS") return callback({ok: true, cancelled: 0});
             if (message.type === "BWT_INTERPRET_TEXT") {
-              return setTimeout(() => callback({ok: true, interpretation: `通俗解释：${message.text}`}), 20);
+              return setTimeout(() => callback(message.text.includes("Broken")
+                ? {ok: false, error: "mock interpret failure"}
+                : {ok: true, interpretation: `通俗解释：${message.text}`}
+              ), message.text.includes("Delayed interpretation") ? 80 : 20);
             }
             const paragraphs = message.paragraphs;
             setTimeout(() => {
@@ -75,6 +78,9 @@
     </article>
     <section id="new-root"><p id="new-paragraph" data-visible="true">New selected paragraph</p></section>
     <p id="selection">Selected English words</p>
+    <p id="native-selection">智能体是一种自主系统</p>
+    <p id="broken-interpretation">Broken interpretation</p>
+    <p id="delayed-interpretation">Delayed interpretation</p>
     <p id="short-selection">when</p>
     <p id="delayed-selection">Delayed selected words</p>
     <p id="hover">Hover English words</p>
@@ -143,7 +149,9 @@
         const translateAction = document.querySelector('[data-action="translate-selection"]');
         const interpretAction = document.querySelector('[data-action="interpret-selection"]');
         const selectionActionsWorked = translateAction?.textContent === "译" && !translateAction.hidden &&
-          interpretAction?.textContent === "释" && !interpretAction.hidden;
+          interpretAction?.textContent === "释" && !interpretAction.hidden &&
+          translateAction.style.top === interpretAction.style.top &&
+          parseFloat(interpretAction.style.left) > parseFloat(translateAction.style.left);
         translateAction?.click();
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
@@ -158,6 +166,39 @@
         const interpretationWorked = interpretationMessage?.text === "Selected English words" &&
           interpretationMessage?.targetLanguage === "zh-CN" &&
           document.querySelector(".bwt-quick-translation")?.textContent === "通俗解释：Selected English words";
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        const nativeRange = document.createRange();
+        nativeRange.selectNodeContents(document.querySelector("#native-selection"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(nativeRange);
+        document.querySelector("#native-selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        await wait(60);
+        const nativeInterpretationWorked = window.__messages.some(({type, text}) =>
+          type === "BWT_INTERPRET_TEXT" && text === "智能体是一种自主系统"
+        ) && document.querySelector(".bwt-quick-translation")?.textContent === "通俗解释：智能体是一种自主系统";
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        const brokenRange = document.createRange();
+        brokenRange.selectNodeContents(document.querySelector("#broken-interpretation"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(brokenRange);
+        document.querySelector("#broken-interpretation").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        await wait(60);
+        const interpretationErrorWorked = document.querySelector(".bwt-quick-translation")?.textContent === "mock interpret failure";
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        const delayedInterpretationRange = document.createRange();
+        delayedInterpretationRange.selectNodeContents(document.querySelector("#delayed-interpretation"));
+        getSelection().removeAllRanges();
+        getSelection().addRange(delayedInterpretationRange);
+        document.querySelector("#delayed-interpretation").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+        await wait(100);
+        const interpretationCancelWorked = document.querySelector(".bwt-quick-translation")?.hidden;
         getSelection().removeAllRanges();
         document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
         await wait(20);
@@ -228,7 +269,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, nativeInterpretationWorked, interpretationErrorWorked, interpretationCancelWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

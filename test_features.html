@@ -46,6 +46,9 @@
           sendMessage(message, callback) {
             window.__messages.push(message);
             if (message.type === "BWT_CANCEL_REQUESTS") return callback({ok: true, cancelled: 0});
+            if (message.type === "BWT_INTERPRET_TEXT") {
+              return setTimeout(() => callback({ok: true, interpretation: `通俗解释：${message.text}`}), 20);
+            }
             const paragraphs = message.paragraphs;
             setTimeout(() => {
               const hasRetry = paragraphs.some(({text}) => text.includes("Retry"));
@@ -137,9 +140,24 @@
         getSelection().addRange(range);
         document.querySelector("#selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
         await wait(20);
-        document.querySelector(".bwt-selection-action")?.click();
+        const translateAction = document.querySelector('[data-action="translate-selection"]');
+        const interpretAction = document.querySelector('[data-action="interpret-selection"]');
+        const selectionActionsWorked = translateAction?.textContent === "译" && !translateAction.hidden &&
+          interpretAction?.textContent === "释" && !interpretAction.hidden;
+        translateAction?.click();
         await wait(60);
         const selectionWorked = document.querySelector(".bwt-quick-translation")?.textContent === "译文：Selected English words";
+        document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        document.querySelector("#selection").dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        await wait(20);
+        document.querySelector('[data-action="interpret-selection"]')?.click();
+        await wait(60);
+        const interpretationMessage = window.__messages.find(({type}) => type === "BWT_INTERPRET_TEXT");
+        const interpretationWorked = interpretationMessage?.text === "Selected English words" &&
+          interpretationMessage?.targetLanguage === "zh-CN" &&
+          document.querySelector(".bwt-quick-translation")?.textContent === "通俗解释：Selected English words";
         getSelection().removeAllRanges();
         document.querySelector("#hover").dispatchEvent(new MouseEvent("click", {bubbles: true}));
         await wait(20);
@@ -210,7 +228,7 @@
         await wait(30);
         const disableWorked = window.__stored.siteRules?.[""]?.disabled === true && ball.dataset.status === "disabled";
 
-        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
+        const checks = {savedRootWorked, shortHeadingWorked, contextWorked, retryWorked, clearRuleWorked, regionWorked, pruneWorked, incrementalWorked, selectionActionsWorked, selectionWorked, interpretationWorked, clickAwayWorked, shortSelectionWorked, selectionMenuLabelWorked, selectionToggleWorked, selectionMenuEnableLabelWorked, quickCancelWorked, hoverWorked, errorHandlingWorked, disableWorked};
         document.body.dataset.test = Object.values(checks).every(Boolean) ? "passed" : "failed";
         document.title = document.body.dataset.test === "passed"
           ? "feature test passed"

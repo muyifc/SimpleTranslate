@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "双语网页翻译",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "将当前网页正文翻译为用户设置的母语，并在原文下方显示译文。",
   "icons": {
     "16": "icons/icon-16.png",

@@ -20,6 +20,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Set up Chrome
+        # Install a known-good Chrome; the windows-latest image's Chrome
+        # fails to launch (--version emits nothing), which breaks the
+        # headless browser tests in scripts/package.ps1.
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
+        with:
+          chrome-version: stable
+
       - name: Verify tag matches manifest version
         shell: pwsh
         run: |
@@ -32,11 +40,12 @@ jobs:
       - name: Diagnose environment
         shell: pwsh
         run: |
-          $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          $chrome = if ($env:CHROME_PATH) { $env:CHROME_PATH } else { "C:\Program Files\Google\Chrome\Application\chrome.exe" }
+          Write-Output "::notice::CHROME_PATH: $env:CHROME_PATH"
           if (-not (Test-Path $chrome)) {
             Write-Error "::error::Chrome not found at $chrome"
           } else {
-            $v = & $chrome --version 2>$null
+            $v = & $chrome --version 2>&1 | Out-String
             Write-Output "::notice::Chrome: $v"
           }
           Write-Output "::notice::Node: $(node --version)"

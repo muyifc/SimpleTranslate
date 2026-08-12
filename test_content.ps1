@@ -1,6 +1,10 @@
 $ErrorActionPreference = "Stop"
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
-$chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+$chrome = if ($env:CHROME_PATH -and (Test-Path -LiteralPath $env:CHROME_PATH)) {
+  $env:CHROME_PATH
+} else {
+  "C:\Program Files\Google\Chrome\Application\chrome.exe"
+}
 $profile = Join-Path ([System.IO.Path]::GetTempPath()) ("bwt-content-test-" + [guid]::NewGuid().ToString("N"))
 
 New-Item -ItemType Directory -Path $profile | Out-Null

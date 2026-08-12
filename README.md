@@ -2,6 +2,15 @@
 
 一个无需构建的 Chrome / Edge Manifest V3 扩展。网页边缘可拖动的悬浮球会按需启动翻译：它识别当前可见正文中的非母语内容，通过用户配置的 OpenAI-compatible Chat Completions 接口逐段翻译，并把母语译文插入原文下方。
 
+## 参考与区别
+
+本项目在界面交互和功能设计上参考了 Edge 扩展商店的《[沉浸式翻译 AI 双语网页翻译 PDF翻译](https://microsoftedge.microsoft.com/addons/detail/%E6%B2%89%E6%B5%B8%E5%BC%8F%E7%BF%BB%E8%AF%91-ai-%E5%8F%8C%E8%AF%AD%E7%BD%91%E9%A1%B5%E7%BF%BB%E8%AF%91-pdf%E7%BF%BB%E8%AF%91/amkbmndfnliijdhojkpoglbnaaahippg)》，但两者在服务模式上有根本区别：
+
+- **自带翻译服务 vs 自备 API Key**：沉浸式翻译提供官方翻译服务（订阅或网页版使用）；本项目**不提供任何翻译服务**，翻译请求直接发送到你自己在设置页配置的 OpenAI-compatible Chat Completions 接口。
+- **模型自己控制**：用什么模型、哪个厂商、多大上下文、什么参数，完全由你自己决定——可以是任意兼容接口的云端模型，也可以是本地部署的模型。项目不做任何模型锁定。
+- **翻译质量可控**：因为模型和接口由你掌握，翻译风格、术语表、语境利用都可以按自己的需求调整；遇到不满意的翻译可以直接更换模型或调整提示词，而不是依赖某个固定的服务端策略。
+- **数据流向透明**：除了你配置的 API 地址，翻译文本不会发往任何第三方服务；API Key 只保存在浏览器本地 `chrome.storage.local`（注意：浏览器扩展无法真正隐藏个人密钥，公开发布前应改用服务端短期令牌）。
+
 ## 安装
 
 1. 打开 `chrome://extensions`（Edge 使用 `edge://extensions`）。

@@ -29,11 +29,30 @@ jobs:
             throw "Tag $tag does not match manifest.json version $manifestVersion. Bump manifest.json before tagging."
           }
 
+      - name: Diagnose environment
+        shell: pwsh
+        run: |
+          $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          if (-not (Test-Path $chrome)) {
+            Write-Error "::error::Chrome not found at $chrome"
+          } else {
+            $v = & $chrome --version 2>$null
+            Write-Output "::notice::Chrome: $v"
+          }
+          Write-Output "::notice::Node: $(node --version)"
+          Write-Output "::notice::PS: $($PSVersionTable.PSVersion)"
+
       - name: Build extension package
         # Runs JS syntax checks, node tests, headless Chrome tests, then
         # produces release/bilingual-web-translation-v<manifest-version>.zip
         shell: pwsh
-        run: ./scripts/package.ps1
+        run: |
+          try {
+            ./scripts/package.ps1
+          } catch {
+            Write-Error "::error::Package build failed: $($_.Exception.Message)"
+            throw
+          }
 
       - name: Create GitHub Release
         shell: pwsh

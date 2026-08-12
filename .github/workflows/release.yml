@@ -20,15 +20,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Set up Chrome
-        id: chrome
-        # Install a known-good Chrome; the windows-latest image's Chrome
-        # hangs on launch (headless tests time out), so the build must use
-        # the freshly installed binary via the chrome-path output.
-        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
-        with:
-          chrome-version: stable
-
       - name: Verify tag matches manifest version
         shell: pwsh
         run: |
@@ -40,28 +31,26 @@ jobs:
 
       - name: Diagnose environment
         shell: pwsh
-        env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: |
-          $chrome = if ($env:CHROME_PATH -and (Test-Path -LiteralPath $env:CHROME_PATH)) { $env:CHROME_PATH } else { "C:\Program Files\Google\Chrome\Application\chrome.exe" }
-          Write-Output "::notice::CHROME_PATH: $env:CHROME_PATH"
-          if (-not (Test-Path $chrome)) {
-            Write-Error "::error::Chrome not found at $chrome"
-          } else {
-            # Do not launch chrome.exe here: on Windows a second Chrome
-            # process hands off to the running instance and may hang.
-            $v = (Get-Item $chrome).VersionInfo.ProductVersion
-            Write-Output "::notice::Chrome: $v"
+          $browsers = @(
+            "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            "C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          )
+          foreach ($b in $browsers) {
+            if (Test-Path $b) {
+              $v = (Get-Item $b).VersionInfo.ProductVersion
+              Write-Output "::notice::$b -> $v"
+            }
           }
           Write-Output "::notice::Node: $(node --version)"
           Write-Output "::notice::PS: $($PSVersionTable.PSVersion)"
 
       - name: Build extension package
-        # Runs JS syntax checks, node tests, headless Chrome tests, then
-        # produces release/bilingual-web-translation-v<manifest-version>.zip
+        # Runs JS syntax checks, node tests, headless browser tests (Edge
+        # preferred: the runner's Chrome build hangs in headless mode),
+        # then produces release/bilingual-web-translation-v<manifest-version>.zip
         shell: pwsh
-        env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: |
           try {
             ./scripts/package.ps1

@@ -1,9 +1,18 @@
 $ErrorActionPreference = "Stop"
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
-$chrome = if ($env:CHROME_PATH -and (Test-Path -LiteralPath $env:CHROME_PATH)) {
-  $env:CHROME_PATH
-} else {
+# Browser candidates in priority order. Prefer a path provided by the
+# caller (CHROME_PATH), then the Edge that ships with the Windows runner
+# (the runner's Google Chrome build hangs in headless mode), then Chrome.
+$chromeCandidates = @()
+if ($env:CHROME_PATH) { $chromeCandidates += $env:CHROME_PATH }
+$chromeCandidates += @(
+  "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+  "C:\Program Files\Microsoft\Edge\Application\msedge.exe",
   "C:\Program Files\Google\Chrome\Application\chrome.exe"
+)
+$chrome = $chromeCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $chrome) {
+  throw "No supported browser found (CHROME_PATH=$env:CHROME_PATH, candidates: $($chromeCandidates -join ', '))"
 }
 $profile = Join-Path ([System.IO.Path]::GetTempPath()) ("bwt-content-test-" + [guid]::NewGuid().ToString("N"))
 

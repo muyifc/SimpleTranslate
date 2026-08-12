@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Verify tag matches manifest version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $manifestVersion = (Get-Content manifest.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $manifestVersion) {
+            throw "Tag $tag does not match manifest.json version $manifestVersion. Bump manifest.json before tagging."
+          }
+
+      - name: Build extension package
+        # Runs JS syntax checks, node tests, headless Chrome tests, then
+        # produces release/bilingual-web-translation-v<manifest-version>.zip
+        shell: pwsh
+        run: ./scripts/package.ps1
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = (Get-ChildItem -Path "release/*.zip").FullName
+          if (-not $assets) { throw "No package archive found in release/" }
+          gh release create $tag $assets --title $tag --generate-notes

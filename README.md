@@ -50,3 +50,5 @@
 - 支持动态新增内容、隐藏译文和再次显示译文。
 
 详细范围见 [实施方案](docs/bilingual_web_translation_extension_plan.md)、[阅读笔记 MVP](docs/reading_notes_mvp.md) 和 [独立阅读笔记页 V1](docs/reading_notes_page_v1.md)。
+
+隐私说明见 [隐私政策](PRIVACY.md)。

@@ -22,7 +22,11 @@ try {
       "--virtual-time-budget=5000",
       "--dump-dom",
       $page
-    ) -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    ) -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    if (-not $process.WaitForExit(60000)) {
+      Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+      throw "$testFile browser check timed out after 60s"
+    }
     $html = Get-Content -Raw $stdout
     if ($process.ExitCode -ne 0 -or $html -notmatch 'data-test="passed"') {
       $title = [regex]::Match($html, "<title>.*?</title>").Value

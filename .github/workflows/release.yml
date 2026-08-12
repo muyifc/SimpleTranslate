@@ -45,7 +45,9 @@ jobs:
           if (-not (Test-Path $chrome)) {
             Write-Error "::error::Chrome not found at $chrome"
           } else {
-            $v = & $chrome --version 2>&1 | Out-String
+            # Do not launch chrome.exe here: on Windows a second Chrome
+            # process hands off to the running instance and may hang.
+            $v = (Get-Item $chrome).VersionInfo.ProductVersion
             Write-Output "::notice::Chrome: $v"
           }
           Write-Output "::notice::Node: $(node --version)"
